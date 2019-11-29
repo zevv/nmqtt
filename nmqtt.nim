@@ -19,7 +19,7 @@ type
     s: AsyncSocket
     ssl: SslContext
     msgIdSeq: MsgId
-    workQueue: Table[MsgID, Work]
+    workQueue: Table[MsgId, Work]
     pubCallbacks: seq[PubCallback]
 
   State = enum
@@ -136,7 +136,7 @@ proc newPkt(typ: PktType=NOTYPE, flags: uint8=0): Pkt =
 #
 
 proc dmp(ctx: MqttCtx, s: string) =
-  if false:
+  if true:
     stderr.write "\e[1;30m" & s & "\e[0m\n"
 
 proc dbg(ctx: MqttCtx, s: string) =
@@ -263,6 +263,16 @@ proc sendSubscribe(ctx: MqttCtx, msgId: MsgId, topic: string, qos: Qos): Future[
   pkt.put qos.uint8
   return await ctx.send(pkt)
 
+proc sendPubAck(ctx: MqttCtx, msgId: MsgId): Future[bool] {.async.} =
+  var pkt = newPkt(PubAck, 0b0010)
+  pkt.put msgId.uint16
+  return await ctx.send(pkt)
+
+proc sendPubRel(ctx: MqttCtx, msgId: MsgId): Future[bool] {.async.} =
+  var pkt = newPkt(PubRel, 0b0010)
+  pkt.put msgId.uint16
+  return await ctx.send(pkt)
+
 proc sendWork(ctx: MqttCtx, work: Work): Future[bool] {.async.} =
   return case work.wk
     of PubWork:
@@ -291,7 +301,7 @@ proc work(ctx: MqttCtx) {.async.} =
 
 proc handleConnAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   ctx.state = Connected
-  let (code, r) = pkt.getu8(1)
+  let (code, _) = pkt.getu8(1)
   if code == 0:
     ctx.dbg "Connection established"
   else:
@@ -299,10 +309,23 @@ proc handleConnAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   await ctx.work()
 
 proc handlePublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
-  let (topic, offset) = pkt.getstring(0, true)
-  let (message, offset2) = pkt.getstring(offset, false)
+  let qos = (pkt.flags shr 1) and 0x03
+  var
+    offset: int
+    msgid: MsgId
+    topic, message: string
+  (topic, offset) = pkt.getstring(0, true)
+  if qos == 1 or qos == 2:
+    (msgid, offset) = pkt.getu16(offset)
+  (message, offset) = pkt.getstring(offset, false)
   for cb in ctx.pubCallbacks:
     cb(topic, message)
+  echo qos
+  if qos == 1:
+    let ok = await ctx.sendPubAck(msgid)
+  if qos == 2:
+    let ok = await ctx.sendPubRel(msgid)
+
 
 proc handlePubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
@@ -323,6 +346,9 @@ proc handlePubRec(ctx: MqttCtx, pkt: Pkt) {.async.} =
   if await ctx.send(pkt):
     ctx.workQueue.del msgId
 
+proc handlePubComp(ctx: MqttCtx, pkt: Pkt) {.async.} =
+  discard
+
 proc handleSubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
   assert msgId in ctx.workQueue
@@ -338,6 +364,7 @@ proc handle(ctx: MqttCtx, pkt: Pkt) {.async.} =
     of Publish: await ctx.handlePublish(pkt)
     of PubAck: await ctx.handlePubAck(pkt)
     of PubRec: await ctx.handlePubRec(pkt)
+    of PubComp: await ctx.handlePubComp(pkt)
     of SubAck: await ctx.handleSubAck(pkt)
     of PingResp: await ctx.handlePingResp(pkt)
     else: ctx.wrn "Unhandled pkt type " & $pkt.typ
@@ -428,7 +455,7 @@ when isMainModule:
     proc on_data(topic: string, message: string) =
       echo "got ", topic, ": ", message
 
-    await ctx.subscribe("#", 0, on_data)
+    await ctx.subscribe("#", 2, on_data)
     #await s.publish("test1", "hallo", 2)
 
   asyncCheck flop()
