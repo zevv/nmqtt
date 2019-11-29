@@ -2,6 +2,7 @@
 import strutils
 import asyncnet
 import net
+import os
 import asyncDispatch
 import tables
 
@@ -11,6 +12,8 @@ type
     host: string
     port: Port
     doSsl: bool
+    username: string
+    password: string
     state: State
     clientId: string
     s: AsyncSocket
@@ -82,9 +85,8 @@ type
       discard 
 
 #
-# Pkts
+# Packet helpers
 #
-
 
 proc put(pkt: var Pkt, v: uint16) =
   pkt.data.add (v.int /%  256).uint8
@@ -133,13 +135,24 @@ proc newPkt(typ: PktType=NOTYPE, flags: uint8=0): Pkt =
 # MQTT context
 #
 
-proc debug(ctx: MqttCtx, s: string) =
+proc dmp(ctx: MqttCtx, s: string) =
   if false:
-    echo "\e[1;30m" & s & "\e[0m"
+    stderr.write "\e[1;30m" & s & "\e[0m\n"
+proc dbg(ctx: MqttCtx, s: string) =
+  stderr.write "\e[37m" & s & "\e[0m\n"
+proc wrn(ctx: MqttCtx, s: string) =
+  stderr.write "\e[1;31m" & s & "\e[0m\n"
 
 proc nextMsgId(ctx: MqttCtx): MsgId =
   inc ctx.msgIdSeq
   return ctx.msgIdSeq
+
+
+proc close(ctx: MqttCtx, reason: string="") {.async.} =
+  ctx.dbg "Closing: " & reason
+  ctx.s.close()
+  ctx.state = Disconnected
+
 
 proc send(ctx: MqttCtx, pkt: Pkt): Future[bool] {.async.} =
 
@@ -157,13 +170,14 @@ proc send(ctx: MqttCtx, pkt: Pkt): Future[bool] {.async.} =
     hdr.add ((len /% 128) or 0x80).uint8
     hdr.add (len mod 128).uint8
 
-  ctx.debug "tx> " & $pkt
+  ctx.dmp "tx> " & $pkt
   await ctx.s.send(hdr[0].unsafeAddr, hdr.len)
 
   if len > 0:
     await ctx.s.send(pkt.data[0].unsafeAddr, len)
 
   return true
+
 
 proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
 
@@ -173,7 +187,10 @@ proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
   var r: int
   var b: uint8
   r = await ctx.s.recvInto(b.addr, b.sizeof)
-  assert r == 1
+  if r != 1:
+    await ctx.close("remote closed connection")
+    return
+
   let typ = (b shr 4).PktType
   let flags = (b and 0x0f)
   var pkt = newPkt(typ, flags)
@@ -183,6 +200,11 @@ proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
   for i in 0..3:
     var b: uint8
     r = await ctx.s.recvInto(b.addr, b.sizeof)
+    
+    if r != 1:
+      await ctx.close("remote closed connection")
+      return
+
     assert r == 1
     inc len, (b and 127).int * mul
     mul *= 128
@@ -192,18 +214,32 @@ proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
   if len > 0:
     pkt.data.setlen len
     r = await ctx.s.recvInto(pkt.data[0].addr, len)
-    assert r == len
+
+    if r != len:
+      await ctx.close("remote closed connection")
+      return
   
-  ctx.debug "rx> " & $pkt
+  ctx.dmp "rx> " & $pkt
   return pkt
-  
+
+
 proc sendConnect(ctx: MqttCtx): Future[bool] {.async.} =
+  var flags: uint8
+  flags = flags or CleanSession.uint8
+  if ctx.username != "":
+    flags = flags or UserNameFlag.uint8
+  if ctx.password != "":
+    flags = flags or PasswordFlag.uint8
   var pkt = newPkt(Connect)
   pkt.put "MQTT", true
   pkt.put 4.uint8
-  pkt.put CleanSession.uint8
+  pkt.put flags
   pkt.put 60.uint16
   pkt.put ctx.clientId, true
+  if ctx.username != "":
+    pkt.put ctx.username, true
+  if ctx.password != "":
+    pkt.put ctx.password, true
   ctx.state = Connecting
   return await ctx.send(pkt)
 
@@ -253,6 +289,11 @@ proc work(ctx: MqttCtx) {.async.} =
 
 proc handleConnAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   ctx.state = Connected
+  let (code, r) = pkt.getu8(1)
+  if code == 0:
+    ctx.dbg "Connection established"
+  else:
+    ctx.wrn "Connect failed, code " & $code
   await ctx.work()
 
 proc handlePublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
@@ -297,7 +338,7 @@ proc handle(ctx: MqttCtx, pkt: Pkt) {.async.} =
     of PubRec: await ctx.handlePubRec(pkt)
     of SubAck: await ctx.handleSubAck(pkt)
     of PingResp: await ctx.handlePingResp(pkt)
-    else: ctx.debug "Unhandled pkt type " & $pkt.typ
+    else: ctx.wrn "Unhandled pkt type " & $pkt.typ
 
 #
 # Async work functions
@@ -321,14 +362,23 @@ proc runPing(ctx: MqttCtx) {.async.} =
 proc runConnect(ctx: MqttCtx) {.async.} =
   while true:
     if ctx.state == Disconnected:
-      ctx.s = await asyncnet.dial(ctx.host, ctx.port)
-      if ctx.doSsl:
-        ctx.ssl = newContext(protSSLv23, CVerifyNone)
-        wrapConnectedSocket(ctx.ssl, ctx.s, handshakeAsClient)
-      let ok = await ctx.sendConnect()
-      if ok:
-        asyncCheck ctx.runRx()
-        asyncCheck ctx.runPing()
+      ctx.dbg "connecting to " & ctx.host & ":" & $ctx.port
+      try:
+        ctx.s = await asyncnet.dial(ctx.host, ctx.port)
+        if ctx.doSsl:
+          when defined(ssl):
+            ctx.ssl = newContext(protSSLv23, CVerifyNone)
+            wrapConnectedSocket(ctx.ssl, ctx.s, handshakeAsClient)
+          else:
+            ctx.wrn "requested SSL session but ssl is not enabled"
+            await ctx.close
+            return
+        let ok = await ctx.sendConnect()
+        if ok:
+          asyncCheck ctx.runRx()
+          asyncCheck ctx.runPing()
+      except OSError as e:
+        ctx.dbg "Error connecting to " & ctx.host & " " & e.msg
 
     await sleepAsync 1000
 
@@ -337,12 +387,18 @@ proc runConnect(ctx: MqttCtx) {.async.} =
 #
 
 proc newMqttCtx(clientId: string): MqttCtx =
-  result = MqttCtx(clientId: clientId)
+  MqttCtx(clientId: clientId)
 
-proc connect*(ctx: MqttCtx, host: string, port: int, doSsl: bool) {.async.} =
+proc set_host*(ctx: MqttCtx, host: string, port: int=1883, doSsl=false) =
   ctx.host = host
   ctx.port = Port(port)
   ctx.doSsl = doSsl
+
+proc set_auth*(ctx: MqttCtx, username: string, password: string) =
+  ctx.username = username
+  ctx.password = password
+
+proc start*(ctx: MqttCtx) {.async.} =
   ctx.state = Disconnected
   asyncCheck ctx.runConnect()
 
@@ -359,16 +415,23 @@ proc subscribe(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback) {.a
 
 when isMainModule:
   proc flop() {.async.} =
-    let s = newMqttCtx("hallo")
-    await s.connect("test.mosquitto.org", 1883, false)
+    let ctx = newMqttCtx("hallo")
+    
+    #ctx.set_host("test.mosquitto.org", 1883)
+
+    ctx.set_host("pruts.nl", 8883, true)
+    ctx.set_auth(getenv("USERNAME"), getenv("PASSWORD"))
+
+    await ctx.start()
     proc on_data(topic: string, message: string) =
       echo "got ", topic, ": ", message
 
-    await s.subscribe("#", 0, on_data)
+    await ctx.subscribe("#", 0, on_data)
     #await s.publish("test1", "hallo", 2)
 
   asyncCheck flop()
   runForever()
+
 
 # vi: ft=nim et ts=2 sw=2
 
