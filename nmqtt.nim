@@ -6,7 +6,7 @@ import os
 import asyncDispatch
 import tables
 
-type 
+type
 
   MqttCtx* = ref object
     host: string
@@ -24,27 +24,27 @@ type
 
   State = enum
     Disabled, Disconnected, Connecting, Connected
-  
+
   MsgId = uint16
 
   Qos = range[0..2]
 
   PktType = enum
-    Notype      =  0 # uninitialized
-    Connect     =  1 # c->s Client request to connect to Server
-    ConnAck     =  2 # s->c Connect acknowledgment 
-    Publish     =  3 # c->s or s->c Publish message 
-    PubAck      =  4 # c->s or s->c Publish acknowledgment 
-    PubRec      =  5 # c->s or s->c Publish received (assured delivery part 1) 
-    PubRel      =  6 # c->s or s->c Publish release (assured delivery part 2) 
-    PubComp     =  7 # c->s or s->c Publish complete (assured delivery part 3) 
-    Subscribe   =  8 # c->s Client subscribe request 
-    SubAck      =  9 # s->c Subscribe acknowledgment 
-    Unsubscribe = 10 # c->s Unsubscribe request 
-    Unsuback    = 11 # s->c Unsubscribe acknowledgment 
-    PingReq     = 12 # c->s PING request 
-    PingResp    = 13 # s->c PING response 
-    Disconnect  = 14 # c->s Client is disconnecting 
+    Notype      =  0
+    Connect     =  1
+    ConnAck     =  2
+    Publish     =  3
+    PubAck      =  4
+    PubRec      =  5
+    PubRel      =  6
+    PubComp     =  7
+    Subscribe   =  8
+    SubAck      =  9
+    Unsubscribe = 10
+    Unsuback    = 11
+    PingReq     = 12
+    PingResp    = 13
+    Disconnect  = 14
 
   ConnectFlag = enum
     WillQoS0     = 0x00
@@ -63,7 +63,7 @@ type
 
   PubState = enum
     PubNew, PubSent, PubAcked
- 
+
   WorkKind = enum
     PubWork, SubWork
 
@@ -82,7 +82,7 @@ type
       retain: bool
       message: string
     of SubWork:
-      discard 
+      discard
 
 #
 # Packet helpers
@@ -138,8 +138,10 @@ proc newPkt(typ: PktType=NOTYPE, flags: uint8=0): Pkt =
 proc dmp(ctx: MqttCtx, s: string) =
   if false:
     stderr.write "\e[1;30m" & s & "\e[0m\n"
+
 proc dbg(ctx: MqttCtx, s: string) =
   stderr.write "\e[37m" & s & "\e[0m\n"
+
 proc wrn(ctx: MqttCtx, s: string) =
   stderr.write "\e[1;31m" & s & "\e[0m\n"
 
@@ -161,7 +163,7 @@ proc send(ctx: MqttCtx, pkt: Pkt): Future[bool] {.async.} =
 
   var hdr: seq[uint8]
   hdr.add (pkt.typ.int shl 4).uint8 or pkt.flags
-  
+
   let len = pkt.data.len
 
   if len <= 127:
@@ -200,7 +202,7 @@ proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
   for i in 0..3:
     var b: uint8
     r = await ctx.s.recvInto(b.addr, b.sizeof)
-    
+
     if r != 1:
       await ctx.close("remote closed connection")
       return
@@ -218,7 +220,7 @@ proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
     if r != len:
       await ctx.close("remote closed connection")
       return
-  
+
   ctx.dmp "rx> " & $pkt
   return pkt
 
@@ -416,7 +418,7 @@ proc subscribe(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback) {.a
 when isMainModule:
   proc flop() {.async.} =
     let ctx = newMqttCtx("hallo")
-    
+
     #ctx.set_host("test.mosquitto.org", 1883)
 
     ctx.set_host("pruts.nl", 8883, true)
