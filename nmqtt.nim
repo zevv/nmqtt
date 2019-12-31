@@ -1,4 +1,6 @@
 
+#{.experimental: "codeReordering".}
+
 import strutils
 import asyncnet
 import net
@@ -23,7 +25,7 @@ type
     pubCallbacks: seq[PubCallback]
 
   State = enum
-    Disabled, Disconnected, Connecting, Connected
+    Disabled, Disconnected, Connecting, Connected, Disconnecting
 
   MsgId = uint16
 
@@ -149,16 +151,20 @@ proc nextMsgId(ctx: MqttCtx): MsgId =
   inc ctx.msgIdSeq
   return ctx.msgIdSeq
 
+proc sendDisconnect(ctx: MqttCtx): Future[bool] {.async.}
 
-proc close(ctx: MqttCtx, reason: string="") {.async.} =
-  ctx.dbg "Closing: " & reason
-  ctx.s.close()
-  ctx.state = Disconnected
+proc close(ctx: MqttCtx, reason: string="User request") {.async.} =
+  if ctx.state in {Connecting, Connected}:
+    ctx.state = Disconnecting
+    ctx.dbg "Closing: " & reason
+    discard await ctx.sendDisconnect()
+    ctx.s.close()
+    ctx.state = Disconnected
 
 
 proc send(ctx: MqttCtx, pkt: Pkt): Future[bool] {.async.} =
 
-  if ctx.state notin {Connecting, Connected}:
+  if ctx.state notin {Connecting, Connected, Disconnecting}:
     return false
 
   var hdr: seq[uint8]
@@ -245,6 +251,10 @@ proc sendConnect(ctx: MqttCtx): Future[bool] {.async.} =
   ctx.state = Connecting
   return await ctx.send(pkt)
 
+proc sendDisconnect(ctx: MqttCtx): Future[bool] {.async.} =
+  let pkt = newPkt(Disconnect, 0)
+  return await ctx.send(pkt)
+
 proc sendPublish(ctx: MqttCtx, msgId: MsgId, topic: string, message: string, qos: Qos, retain: bool): Future[bool] {.async.} =
   var flags = (qos shl 1).uint8
   if retain:
@@ -299,7 +309,7 @@ proc work(ctx: MqttCtx) {.async.} =
     for msgId in delWork:
       ctx.workQueue.del msgId
 
-proc handleConnAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
+proc onConnAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   ctx.state = Connected
   let (code, _) = pkt.getu8(1)
   if code == 0:
@@ -308,7 +318,7 @@ proc handleConnAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
     ctx.wrn "Connect failed, code " & $code
   await ctx.work()
 
-proc handlePublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
+proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let qos = (pkt.flags shr 1) and 0x03
   var
     offset: int
@@ -320,14 +330,13 @@ proc handlePublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
   (message, offset) = pkt.getstring(offset, false)
   for cb in ctx.pubCallbacks:
     cb(topic, message)
-  echo qos
   if qos == 1:
     let ok = await ctx.sendPubAck(msgid)
   if qos == 2:
     let ok = await ctx.sendPubRel(msgid)
 
 
-proc handlePubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
+proc onPubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
   assert msgId in ctx.workQueue
   assert ctx.workQueue[msgId].wk == PubWork
@@ -335,7 +344,7 @@ proc handlePubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   assert ctx.workQueue[msgId].qos == 1
   ctx.workQueue.del msgId
 
-proc handlePubRec(ctx: MqttCtx, pkt: Pkt) {.async.} =
+proc onPubRec(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
   assert msgId in ctx.workQueue
   assert ctx.workQueue[msgId].wk == PubWork
@@ -346,39 +355,42 @@ proc handlePubRec(ctx: MqttCtx, pkt: Pkt) {.async.} =
   if await ctx.send(pkt):
     ctx.workQueue.del msgId
 
-proc handlePubComp(ctx: MqttCtx, pkt: Pkt) {.async.} =
+proc onPubComp(ctx: MqttCtx, pkt: Pkt) {.async.} =
   discard
 
-proc handleSubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
+proc onSubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
   assert msgId in ctx.workQueue
   assert ctx.workQueue[msgId].wk == SubWork
   ctx.workQueue.del msgId
 
-proc handlePingResp(ctx: MqttCtx, pkt: Pkt) {.async.} =
+proc onPingResp(ctx: MqttCtx, pkt: Pkt) {.async.} =
   discard
 
 proc handle(ctx: MqttCtx, pkt: Pkt) {.async.} =
   case pkt.typ
-    of ConnAck: await ctx.handleConnAck(pkt)
-    of Publish: await ctx.handlePublish(pkt)
-    of PubAck: await ctx.handlePubAck(pkt)
-    of PubRec: await ctx.handlePubRec(pkt)
-    of PubComp: await ctx.handlePubComp(pkt)
-    of SubAck: await ctx.handleSubAck(pkt)
-    of PingResp: await ctx.handlePingResp(pkt)
-    else: ctx.wrn "Unhandled pkt type " & $pkt.typ
+    of ConnAck: await ctx.onConnAck(pkt)
+    of Publish: await ctx.onPublish(pkt)
+    of PubAck: await ctx.onPubAck(pkt)
+    of PubRec: await ctx.onPubRec(pkt)
+    of PubComp: await ctx.onPubComp(pkt)
+    of SubAck: await ctx.onSubAck(pkt)
+    of PingResp: await ctx.onPingResp(pkt)
+    else: ctx.wrn "Unond pkt type " & $pkt.typ
 
 #
 # Async work functions
 #
 
 proc runRx(ctx: MqttCtx) {.async.} =
-  while true:
-    var pkt = await ctx.recv()
-    if pkt.typ == Notype:
-      break
-    await ctx.handle(pkt)
+  try:
+    while true:
+      var pkt = await ctx.recv()
+      if pkt.typ == Notype:
+        break
+      await ctx.handle(pkt)
+  except OsError:
+    echo "Boom"
 
 proc runPing(ctx: MqttCtx) {.async.} =
   while true:
@@ -448,8 +460,7 @@ when isMainModule:
 
     #ctx.set_host("test.mosquitto.org", 1883)
 
-    ctx.set_host("pruts.nl", 8883, true)
-    ctx.set_auth(getenv("USERNAME"), getenv("PASSWORD"))
+    ctx.set_host("test.mosquitto.org", 8883, true)
 
     await ctx.start()
     proc on_data(topic: string, message: string) =
@@ -457,6 +468,8 @@ when isMainModule:
 
     await ctx.subscribe("#", 2, on_data)
     #await s.publish("test1", "hallo", 2)
+    #await sleepAsync 1000
+    #await ctx.close()
 
   asyncCheck flop()
   runForever()

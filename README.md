@@ -1,5 +1,5 @@
 
-Native Nim MQTT client library. Alpha quality.
+Native Nim MQTT client library, work in progress
 
 Usage:
 
