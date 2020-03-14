@@ -4,7 +4,6 @@
 import strutils
 import asyncnet
 import net
-import os
 import asyncDispatch
 import tables
 
