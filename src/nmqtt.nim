@@ -4,7 +4,6 @@
 import strutils
 import asyncnet
 import net
-import os
 import asyncDispatch
 import tables
 
@@ -25,7 +24,7 @@ type
     pubCallbacks: seq[PubCallback]
 
   State = enum
-    Disabled, Disconnected, Connecting, Connected, Disconnecting
+    Disabled, Disconnected, Connecting, Connected, Disconnecting, Error
 
   MsgId = uint16
 
@@ -138,7 +137,7 @@ proc newPkt(typ: PktType=NOTYPE, flags: uint8=0): Pkt =
 #
 
 proc dmp(ctx: MqttCtx, s: string) =
-  if true:
+  when defined(dev):
     stderr.write "\e[1;30m" & s & "\e[0m\n"
 
 proc dbg(ctx: MqttCtx, s: string) =
@@ -413,13 +412,14 @@ proc runConnect(ctx: MqttCtx) {.async.} =
           else:
             ctx.wrn "requested SSL session but ssl is not enabled"
             await ctx.close
-            return
+            ctx.state = Error
         let ok = await ctx.sendConnect()
         if ok:
           asyncCheck ctx.runRx()
           asyncCheck ctx.runPing()
       except OSError as e:
         ctx.dbg "Error connecting to " & ctx.host & " " & e.msg
+        ctx.state = Error
 
     await sleepAsync 1000
 
@@ -442,6 +442,8 @@ proc set_auth*(ctx: MqttCtx, username: string, password: string) =
 proc start*(ctx: MqttCtx) {.async.} =
   ctx.state = Disconnected
   asyncCheck ctx.runConnect()
+  while ctx.state != Connected and ctx.state != Error:
+    await sleepAsync 1000
 
 proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0) {.async.} =
   let msgId = ctx.nextMsgId()
