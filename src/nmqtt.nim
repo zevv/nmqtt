@@ -358,7 +358,8 @@ proc onPubRec(ctx: MqttCtx, pkt: Pkt) {.async.} =
   assert ctx.workQueue[msgId].qos == 2
   var pkt = newPkt(PubRel, 0b0010)
   pkt.put(msgId)
-  discard await ctx.send(pkt)
+  if await ctx.send(pkt):
+    discard
 
 proc onPubComp(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
