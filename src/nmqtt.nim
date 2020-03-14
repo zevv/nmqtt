@@ -307,7 +307,7 @@ proc work(ctx: MqttCtx, connEstablished = false) {.async.} =
             work.state = WorkSent
     
       if connEstablished:
-        # Error: Queue contains a qos=1 message. Possible due to break in conn.
+        # Error: Queue contains a message. Possible due to break in conn.
         if work.state == WorkSent:
           ctx.dbg "Error a msg died in the queue"
           delWork.add msgId
