@@ -293,10 +293,11 @@ proc sendPingReq(ctx: MqttCtx): Future[bool] {.async.} =
   var pkt = newPkt(Pingreq)
   return await ctx.send(pkt)
 
-proc work(ctx: MqttCtx) {.async.} =
+proc work(ctx: MqttCtx, connEstablished = false) {.async.} =
   if ctx.state == Connected:
     var delWork: seq[MsgId]
     for msgId, work in ctx.workQueue:
+      # New messages in queue
       if work.state == WorkNew:
         let ok = await ctx.sendWork(work)
         if ok:
@@ -304,6 +305,12 @@ proc work(ctx: MqttCtx) {.async.} =
             delWork.add msgId
           else:
             work.state = WorkSent
+    
+      if connEstablished:
+        # Error: Queue contains a qos=1 message. Possible due to break in conn.
+        if work.state == WorkSent:
+          ctx.dbg "Error a msg died in the queue"
+          delWork.add msgId
 
     for msgId in delWork:
       ctx.workQueue.del msgId
@@ -315,7 +322,7 @@ proc onConnAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
     ctx.dbg "Connection established"
   else:
     ctx.wrn "Connect failed, code " & $code
-  await ctx.work()
+  await ctx.work(true)
 
 proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let qos = (pkt.flags shr 1) and 0x03
@@ -337,11 +344,11 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
 
 proc onPubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
-  assert msgId in ctx.workQueue
-  assert ctx.workQueue[msgId].wk == PubWork
-  assert ctx.workQueue[msgId].state == WorkSent
-  assert ctx.workQueue[msgId].qos == 1
-  ctx.workQueue.del msgId
+  if msgId in ctx.workQueue:
+    assert ctx.workQueue[msgId].wk == PubWork
+    assert ctx.workQueue[msgId].state == WorkSent
+    assert ctx.workQueue[msgId].qos == 1
+    ctx.workQueue.del msgId
 
 proc onPubRec(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
@@ -351,11 +358,13 @@ proc onPubRec(ctx: MqttCtx, pkt: Pkt) {.async.} =
   assert ctx.workQueue[msgId].qos == 2
   var pkt = newPkt(PubRel, 0b0010)
   pkt.put(msgId)
-  if await ctx.send(pkt):
-    ctx.workQueue.del msgId
+  discard await ctx.send(pkt)
 
 proc onPubComp(ctx: MqttCtx, pkt: Pkt) {.async.} =
-  discard
+  let (msgId, _) = pkt.getu16(0)
+  if msgId in ctx.workQueue:
+    ctx.workQueue[msgId].state = WorkAcked
+    ctx.workQueue.del msgId
 
 proc onSubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
@@ -445,10 +454,13 @@ proc start*(ctx: MqttCtx) {.async.} =
   while ctx.state != Connected and ctx.state != Error:
     await sleepAsync 1000
 
-proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0) {.async.} =
+proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, waitConfirmation = false) {.async.} =
   let msgId = ctx.nextMsgId()
   ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, message: message, qos: qos)
   await ctx.work()
+  if waitConfirmation:
+    while ctx.workQueue.len > 0 and hasKey(ctx.workQueue, msgId):
+      await sleepAsync 1000
 
 proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback) {.async.} =
   let msgId = ctx.nextMsgId()
