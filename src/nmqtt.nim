@@ -427,7 +427,7 @@ proc runConnect(ctx: MqttCtx) {.async.} =
 # Public API
 #
 
-proc newMqttCtx(clientId: string): MqttCtx =
+proc newMqttCtx*(clientId: string): MqttCtx =
   MqttCtx(clientId: clientId)
 
 proc set_host*(ctx: MqttCtx, host: string, port: int=1883, doSsl=false) =
@@ -443,12 +443,12 @@ proc start*(ctx: MqttCtx) {.async.} =
   ctx.state = Disconnected
   asyncCheck ctx.runConnect()
 
-proc publish(ctx: MqttCtx, topic: string, message: string, qos=0) {.async.} =
+proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0) {.async.} =
   let msgId = ctx.nextMsgId()
   ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, message: message, qos: qos)
   await ctx.work()
 
-proc subscribe(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback) {.async.} =
+proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback) {.async.} =
   let msgId = ctx.nextMsgId()
   ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, qos: qos)
   ctx.pubCallbacks.add callback
@@ -467,7 +467,7 @@ when isMainModule:
       echo "got ", topic, ": ", message
 
     await ctx.subscribe("#", 2, on_data)
-    #await s.publish("test1", "hallo", 2)
+    #await ctx.publish("test1", "hallo", 2)
     #await sleepAsync 1000
     #await ctx.close()
 
