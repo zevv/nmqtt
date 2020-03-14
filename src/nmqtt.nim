@@ -442,6 +442,8 @@ proc set_auth*(ctx: MqttCtx, username: string, password: string) =
 proc start*(ctx: MqttCtx) {.async.} =
   ctx.state = Disconnected
   asyncCheck ctx.runConnect()
+  while ctx.state != Connected:
+    await sleepAsync 1000
 
 proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0) {.async.} =
   let msgId = ctx.nextMsgId()
