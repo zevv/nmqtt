@@ -137,7 +137,7 @@ proc newPkt(typ: PktType=NOTYPE, flags: uint8=0): Pkt =
 #
 
 proc dmp(ctx: MqttCtx, s: string) =
-  if true:
+  when defined(dev):
     stderr.write "\e[1;30m" & s & "\e[0m\n"
 
 proc dbg(ctx: MqttCtx, s: string) =
