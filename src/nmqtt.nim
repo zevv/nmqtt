@@ -449,8 +449,8 @@ proc runConnect(ctx: MqttCtx) {.async.} =
             ctx.state = Error
         let ok = await ctx.sendConnect()
         if ok:
-          asyncCheck ctx.runRx()
-          asyncCheck ctx.runPing()
+          await ctx.runRx()
+          await ctx.runPing()
       except OSError as e:
         ctx.dbg "Error connecting to " & ctx.host & " " & e.msg
         ctx.state = Error
@@ -513,7 +513,6 @@ when isMainModule:
     let ctx = newMqttCtx("hallo")
 
     #ctx.set_host("test.mosquitto.org", 1883)
-
     ctx.set_host("test.mosquitto.org", 8883, true)
 
     await ctx.start()
@@ -522,7 +521,7 @@ when isMainModule:
 
     await ctx.subscribe("#", 2, on_data)
     await ctx.publish("test1", "hallo", 2)
-    await sleepAsync 1000
+    await sleepAsync 10000
     await ctx.close()
 
   waitFor flop()
