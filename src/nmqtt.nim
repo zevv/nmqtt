@@ -80,6 +80,7 @@ type
     msgIdSeq: MsgId
     workQueue: Table[MsgId, Work]
     pubCallbacks: seq[PubCallback]
+    pingTxInterval: int # ms
 
   State = enum
     Disabled, Disconnected, Connecting, Connected, Disconnecting, Error
@@ -465,8 +466,9 @@ proc runRx(ctx: MqttCtx) {.async.} =
     echo "Boom"
 
 proc runPing(ctx: MqttCtx) {.async.} =
+  echo "runping"
   while true:
-    await sleepAsync 1000
+    await sleepAsync ctx.pingTxInterval
     let ok = await ctx.sendPingReq()
     if not ok:
       break
@@ -504,6 +506,10 @@ proc newMqttCtx*(clientId: string): MqttCtx =
   ## Initiate a new MQTT client
 
   MqttCtx(clientId: clientId)
+
+proc set_ping_interval*(ctx: MqttCtx, txInterval: int) =
+  if txInterval > 0 and txInterval < 65535:
+    ctx.pingTxInterval = txInterval * 1000
 
 proc set_host*(ctx: MqttCtx, host: string, port: int=1883, doSsl=false) =
   ## Set the MQTT host
