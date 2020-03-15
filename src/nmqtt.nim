@@ -4,6 +4,7 @@
 ## Examples
 ## --------
 ##
+## All in one
 ## .. code-block::plain
 ##    import nmqtt, asyncdispatch
 ##
@@ -16,12 +17,45 @@
 ##    proc on_data(topic: string, message: string) =
 ##      echo "got ", topic, ": ", message
 ##
+##    await ctx.subscribe("#", 2, on_data)
 ##    await ctx.publish("test1", "hallo", 2)
-##    await ctx.subscribe("#", 0, on_data)
 ##
 ##    asyncCheck flop()
 ##    runForever()
 ##
+## Individual
+## .. code-block::plain
+##    import nmqtt, asyncdispatch
+##
+##    let ctx = newMqttCtx("hallo")
+##    ctx.set_host("test.mosquitto.org", 1883)
+##    #ctx.set_auth("username", "password")
+##    await ctx.start()
+##
+##    proc mqttSub() {.async.} =
+##      await ctx.start()
+##      proc on_data(topic: string, message: string) =
+##        echo "got ", topic, ": ", message
+##
+##      await ctx.subscribe("#", 2, on_data)
+##
+##    proc mqttPub() {.async.} =
+##      await ctx.start()
+##      await ctx.publish("test1", "hallo", 2, true)
+##
+##    proc mqttPubSleep() {.async.} =
+##      await ctx.start()
+##      await ctx.publish("test1", "hallo", 2)
+##      await sleepAsync 5000
+##
+##    #asyncCheck mqttSub
+##    #runForever()
+##    # OR
+##    #waitFor mqttPub()
+##    # OR
+##    #waitFor mqttPubSleep()
+##
+##    waitFor ctx.close()
 
 #{.experimental: "codeReordering".}
 
