@@ -210,7 +210,9 @@ proc nextMsgId(ctx: MqttCtx): MsgId =
 
 proc sendDisconnect(ctx: MqttCtx): Future[bool] {.async.}
 
-proc close(ctx: MqttCtx, reason: string="User request") {.async.} =
+proc close*(ctx: MqttCtx, reason: string="User request") {.async.} =
+  ## Close the connection to the brooker
+  
   if ctx.state in {Connecting, Connected}:
     ctx.state = Disconnecting
     ctx.dbg "Closing: " & reason
