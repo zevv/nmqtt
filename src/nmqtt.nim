@@ -229,19 +229,21 @@ proc send(ctx: MqttCtx, pkt: Pkt): Future[bool] {.async.} =
   var hdr: seq[uint8]
   hdr.add (pkt.typ.int shl 4).uint8 or pkt.flags
 
-  let len = pkt.data.len
-
-  if len <= 127:
-    hdr.add len.uint8
-  elif len <= 16383:
-    hdr.add ((len /% 128) or 0x80).uint8
-    hdr.add (len mod 128).uint8
+  var len = pkt.data.len
+  while true:
+    var b = len mod 128
+    len = len div 128
+    if len > 0:
+      b = b or 128
+    hdr.add b.uint8
+    if len == 0:
+      break
 
   ctx.dmp "tx> " & $pkt
   await ctx.s.send(hdr[0].unsafeAddr, hdr.len)
 
-  if len > 0:
-    await ctx.s.send(pkt.data[0].unsafeAddr, len)
+  if pkt.data.len > 0:
+    await ctx.s.send(pkt.data[0].unsafeAddr, pkt.data.len)
 
   return true
 
