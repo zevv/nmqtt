@@ -429,9 +429,10 @@ proc onPubComp(ctx: MqttCtx, pkt: Pkt) {.async.} =
 
 proc onSubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
-  assert msgId in ctx.workQueue
-  assert ctx.workQueue[msgId].wk == SubWork
-  ctx.workQueue.del msgId
+  # TODO: Fix double msg
+  if msgId in ctx.workQueue:
+    assert ctx.workQueue[msgId].wk == SubWork
+    ctx.workQueue.del msgId
 
 proc onPingResp(ctx: MqttCtx, pkt: Pkt) {.async.} =
   discard
@@ -485,8 +486,8 @@ proc runConnect(ctx: MqttCtx) {.async.} =
             ctx.state = Error
         let ok = await ctx.sendConnect()
         if ok:
-          await ctx.runRx()
-          await ctx.runPing()
+          asyncCheck ctx.runRx()
+          asyncCheck ctx.runPing()
       except OSError as e:
         ctx.dbg "Error connecting to " & ctx.host & " " & e.msg
         ctx.state = Error
