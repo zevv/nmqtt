@@ -490,8 +490,6 @@ proc runConnect(ctx: MqttCtx) {.async.} =
             ctx.state = Error
         let ok = await ctx.sendConnect()
         if ok:
-          if ctx.pingTxInterval == 0:
-            ctx.pingTxInterval = 60 * 1000
           asyncCheck ctx.runRx()
           asyncCheck ctx.runPing()
       except OSError as e:
@@ -509,7 +507,7 @@ proc newMqttCtx*(clientId: string): MqttCtx =
 
   MqttCtx(clientId: clientId)
 
-proc set_ping_interval*(ctx: MqttCtx, txInterval: int) =
+proc set_ping_interval*(ctx: MqttCtx, txInterval: int = 6) =
   ## Set the clients ping interval in seconds. Default is 60 seconds.
 
   if txInterval > 0 and txInterval < 65535:
@@ -531,6 +529,8 @@ proc set_auth*(ctx: MqttCtx, username: string, password: string) =
 proc start*(ctx: MqttCtx) {.async.} =
   ## Connect to the host.
 
+  if ctx.pingTxInterval == 0:
+    ctx.set_ping_interval()
   ctx.state = Disconnected
   asyncCheck ctx.runConnect()
   while ctx.state != Connected and ctx.state != Error:
