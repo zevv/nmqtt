@@ -80,6 +80,7 @@ type
     msgIdSeq: MsgId
     workQueue: Table[MsgId, Work]
     pubCallbacks: seq[PubCallback]
+    inWork: bool
     pingTxInterval: int # ms
 
   State = enum
@@ -357,6 +358,9 @@ proc sendPingReq(ctx: MqttCtx): Future[bool] =
   result = ctx.send(pkt)
 
 proc work(ctx: MqttCtx, connEstablished = false) {.async.} =
+  if ctx.inWork:
+    return
+  ctx.inWork = true
   if ctx.state == Connected:
     var delWork: seq[MsgId]
     for msgId, work in ctx.workQueue:
@@ -377,6 +381,7 @@ proc work(ctx: MqttCtx, connEstablished = false) {.async.} =
 
     for msgId in delWork:
       ctx.workQueue.del msgId
+  ctx.inWork = false
 
 proc onConnAck(ctx: MqttCtx, pkt: Pkt): Future[void] =
   ctx.state = Connected
@@ -432,10 +437,9 @@ proc onPubComp(ctx: MqttCtx, pkt: Pkt) {.async.} =
 
 proc onSubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
-  # TODO: Fix double msg
-  if msgId in ctx.workQueue:
-    assert ctx.workQueue[msgId].wk == SubWork
-    ctx.workQueue.del msgId
+  assert msgId in ctx.workQueue
+  assert ctx.workQueue[msgId].wk == SubWork
+  ctx.workQueue.del msgId
 
 proc onPingResp(ctx: MqttCtx, pkt: Pkt) {.async.} =
   discard
