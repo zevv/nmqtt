@@ -28,7 +28,7 @@ import nmqtt, asyncdispatch
 let ctx = newMqttCtx("hallo")
 ctx.set_host("test.mosquitto.org", 1883)
 #ctx.set_auth("username", "password")
-#ctx.set_pint_interval(30)
+#ctx.set_ping_interval(30)
 
 proc mqttSub() {.async.} =
   await ctx.start()
