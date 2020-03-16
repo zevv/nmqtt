@@ -81,6 +81,7 @@ type
     workQueue: Table[MsgId, Work]
     pubCallbacks: seq[PubCallback]
     inWork: bool
+    pingTxInterval: int # ms
 
   State = enum
     Disabled, Disconnected, Connecting, Connected, Disconnecting, Error
@@ -213,11 +214,11 @@ proc sendDisconnect(ctx: MqttCtx): Future[bool] {.async.}
 
 proc close*(ctx: MqttCtx, reason: string="User request") {.async.} =
   ## Close the connection to the brooker
-  
+
   if ctx.state in {Connecting, Connected}:
     ctx.state = Disconnecting
     ctx.dbg "Closing: " & reason
-    asyncCheck ctx.sendDisconnect()
+    discard await ctx.sendDisconnect()
     ctx.s.close()
     ctx.state = Disconnected
 
@@ -230,19 +231,21 @@ proc send(ctx: MqttCtx, pkt: Pkt): Future[bool] {.async.} =
   var hdr: seq[uint8]
   hdr.add (pkt.typ.int shl 4).uint8 or pkt.flags
 
-  let len = pkt.data.len
-
-  if len <= 127:
-    hdr.add len.uint8
-  elif len <= 16383:
-    hdr.add ((len /% 128) or 0x80).uint8
-    hdr.add (len mod 128).uint8
+  var len = pkt.data.len
+  while true:
+    var b = len mod 128
+    len = len div 128
+    if len > 0:
+      b = b or 128
+    hdr.add b.uint8
+    if len == 0:
+      break
 
   ctx.dmp "tx> " & $pkt
   await ctx.s.send(hdr[0].unsafeAddr, hdr.len)
 
-  if len > 0:
-    await ctx.s.send(pkt.data[0].unsafeAddr, len)
+  if pkt.data.len > 0:
+    await ctx.s.send(pkt.data[0].unsafeAddr, pkt.data.len)
 
   return true
 
@@ -369,7 +372,7 @@ proc work(ctx: MqttCtx, connEstablished = false) {.async.} =
             delWork.add msgId
           else:
             work.state = WorkSent
-    
+
       if connEstablished:
         # Error: Queue contains a message. Possible due to break in conn.
         if work.state == WorkSent:
@@ -468,8 +471,9 @@ proc runRx(ctx: MqttCtx) {.async.} =
     echo "Boom"
 
 proc runPing(ctx: MqttCtx) {.async.} =
+  echo "runping"
   while true:
-    await sleepAsync 1000
+    await sleepAsync ctx.pingTxInterval
     let ok = await ctx.sendPingReq()
     if not ok:
       break
@@ -507,6 +511,10 @@ proc newMqttCtx*(clientId: string): MqttCtx =
   ## Initiate a new MQTT client
 
   MqttCtx(clientId: clientId)
+
+proc set_ping_interval*(ctx: MqttCtx, txInterval: int) =
+  if txInterval > 0 and txInterval < 65535:
+    ctx.pingTxInterval = txInterval * 1000
 
 proc set_host*(ctx: MqttCtx, host: string, port: int=1883, doSsl=false) =
   ## Set the MQTT host
