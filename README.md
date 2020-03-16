@@ -28,6 +28,7 @@ import nmqtt, asyncdispatch
 let ctx = newMqttCtx("hallo")
 ctx.set_host("test.mosquitto.org", 1883)
 #ctx.set_auth("username", "password")
+#ctx.set_pint_interval(30)
 
 proc mqttSub() {.async.} =
   await ctx.start()
@@ -69,6 +70,17 @@ Initiate a new MQTT client
 
 ____
 
+## set_ping_interval*
+
+```nim
+proc set_ping_interval*(ctx: MqttCtx, txInterval: int) =
+```
+
+Set the clients ping interval in seconds. Default is 60 seconds.
+
+
+____
+
 ## set_host*
 
 ```nim
@@ -98,8 +110,6 @@ proc start*(ctx: MqttCtx) {.async.} =
 ```
 
 Connect to the host.
-
- You might want to insert a `await sleepAsync 3000`, to let the first pings through before sending.
 
 
 ____
