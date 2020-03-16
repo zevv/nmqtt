@@ -507,7 +507,7 @@ proc newMqttCtx*(clientId: string): MqttCtx =
 
   MqttCtx(clientId: clientId)
 
-proc set_ping_interval*(ctx: MqttCtx, txInterval: int = 6) =
+proc set_ping_interval*(ctx: MqttCtx, txInterval: int = 60) =
   ## Set the clients ping interval in seconds. Default is 60 seconds.
 
   if txInterval > 0 and txInterval < 65535:
