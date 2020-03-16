@@ -368,7 +368,7 @@ proc work(ctx: MqttCtx, connEstablished = false) {.async.} =
             delWork.add msgId
           else:
             work.state = WorkSent
-    
+
       if connEstablished:
         # Error: Queue contains a message. Possible due to break in conn.
         if work.state == WorkSent:
@@ -507,7 +507,9 @@ proc newMqttCtx*(clientId: string): MqttCtx =
 
   MqttCtx(clientId: clientId)
 
-proc set_ping_interval*(ctx: MqttCtx, txInterval: int) =
+proc set_ping_interval*(ctx: MqttCtx, txInterval: int = 60) =
+  ## Set the clients ping interval in seconds. Default is 60 seconds.
+
   if txInterval > 0 and txInterval < 65535:
     ctx.pingTxInterval = txInterval * 1000
 
@@ -526,10 +528,9 @@ proc set_auth*(ctx: MqttCtx, username: string, password: string) =
 
 proc start*(ctx: MqttCtx) {.async.} =
   ## Connect to the host.
-  ##
-  ## You might want to insert a `await sleepAsync 3000`, to let the first pings
-  ## through before sending.
 
+  if ctx.pingTxInterval == 0:
+    ctx.set_ping_interval()
   ctx.state = Disconnected
   asyncCheck ctx.runConnect()
   while ctx.state != Connected and ctx.state != Error:
@@ -559,6 +560,7 @@ when isMainModule:
 
     #ctx.set_host("test.mosquitto.org", 1883)
     ctx.set_host("test.mosquitto.org", 8883, true)
+    ctx.set_ping_interval(10)
 
     await ctx.start()
     proc on_data(topic: string, message: string) =
