@@ -80,6 +80,7 @@ type
     msgIdSeq: MsgId
     workQueue: Table[MsgId, Work]
     pubCallbacks: seq[PubCallback]
+    inWork: bool
     pingTxInterval: int # ms
 
   State = enum
@@ -357,6 +358,9 @@ proc sendPingReq(ctx: MqttCtx): Future[bool] =
   result = ctx.send(pkt)
 
 proc work(ctx: MqttCtx, connEstablished = false) {.async.} =
+  if ctx.inWork:
+    return
+  ctx.inWork = true
   if ctx.state == Connected:
     var delWork: seq[MsgId]
     for msgId, work in ctx.workQueue:
@@ -377,6 +381,7 @@ proc work(ctx: MqttCtx, connEstablished = false) {.async.} =
 
     for msgId in delWork:
       ctx.workQueue.del msgId
+  ctx.inWork = false
 
 proc onConnAck(ctx: MqttCtx, pkt: Pkt): Future[void] =
   ctx.state = Connected
@@ -432,10 +437,9 @@ proc onPubComp(ctx: MqttCtx, pkt: Pkt) {.async.} =
 
 proc onSubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
-  # TODO: Fix double msg
-  if msgId in ctx.workQueue:
-    assert ctx.workQueue[msgId].wk == SubWork
-    ctx.workQueue.del msgId
+  assert msgId in ctx.workQueue
+  assert ctx.workQueue[msgId].wk == SubWork
+  ctx.workQueue.del msgId
 
 proc onPingResp(ctx: MqttCtx, pkt: Pkt) {.async.} =
   discard
@@ -507,7 +511,9 @@ proc newMqttCtx*(clientId: string): MqttCtx =
 
   MqttCtx(clientId: clientId)
 
-proc set_ping_interval*(ctx: MqttCtx, txInterval: int) =
+proc set_ping_interval*(ctx: MqttCtx, txInterval: int = 60) =
+  ## Set the clients ping interval in seconds. Default is 60 seconds.
+
   if txInterval > 0 and txInterval < 65535:
     ctx.pingTxInterval = txInterval * 1000
 
@@ -526,10 +532,9 @@ proc set_auth*(ctx: MqttCtx, username: string, password: string) =
 
 proc start*(ctx: MqttCtx) {.async.} =
   ## Connect to the host.
-  ##
-  ## You might want to insert a `await sleepAsync 3000`, to let the first pings
-  ## through before sending.
 
+  if ctx.pingTxInterval == 0:
+    ctx.set_ping_interval()
   ctx.state = Disconnected
   asyncCheck ctx.runConnect()
   while ctx.state != Connected and ctx.state != Error:
@@ -558,8 +563,9 @@ when isMainModule:
     proc flop() {.async.} =
       let ctx = newMqttCtx("hallo")
 
-      #ctx.set_host("test.mosquitto.org", 1883)
-      ctx.set_host("test.mosquitto.org", 8883, true)
+    #ctx.set_host("test.mosquitto.org", 1883)
+    ctx.set_host("test.mosquitto.org", 8883, true)
+    ctx.set_ping_interval(10)
 
       await ctx.start()
       proc on_data(topic: string, message: string) =
