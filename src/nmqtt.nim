@@ -212,7 +212,8 @@ proc nextMsgId(ctx: MqttCtx): MsgId =
 
 proc sendDisconnect(ctx: MqttCtx): Future[bool] {.async.}
 
-proc close*(ctx: MqttCtx, reason: string="User request") {.async.} =
+
+proc close*(ctx: MqttCtx, reason: string="User request", reConnect=false) {.async.} =
   ## Close the connection to the brooker
 
   if ctx.state in {Connecting, Connected}:
@@ -220,7 +221,10 @@ proc close*(ctx: MqttCtx, reason: string="User request") {.async.} =
     ctx.dbg "Closing: " & reason
     discard await ctx.sendDisconnect()
     ctx.s.close()
-    ctx.state = Disconnected
+    if reConnect:
+      ctx.state = Disconnected
+    else:
+      ctx.state = Disabled
 
 
 proc send(ctx: MqttCtx, pkt: Pkt): Future[bool] {.async.} =
@@ -259,7 +263,7 @@ proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
   var b: uint8
   r = await ctx.s.recvInto(b.addr, b.sizeof)
   if r != 1:
-    await ctx.close("remote closed connection")
+    await ctx.close("remote closed connection", true)
     return
 
   let typ = (b shr 4).PktType
@@ -273,7 +277,7 @@ proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
     r = await ctx.s.recvInto(b.addr, b.sizeof)
 
     if r != 1:
-      await ctx.close("remote closed connection")
+      await ctx.close("remote closed connection", true)
       return
 
     assert r == 1
@@ -287,7 +291,7 @@ proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
     r = await ctx.s.recvInto(pkt.data[0].addr, len)
 
     if r != len:
-      await ctx.close("remote closed connection")
+      await ctx.close("remote closed connection", true)
       return
 
   ctx.dmp "rx> " & $pkt
