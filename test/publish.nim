@@ -5,7 +5,8 @@ suite "test suite for publish":
     ## Awaiting PR #16
 
     let (tpc, msg) = tdata("publish retain msg")
-    waitFor ctxMain.publish(tpc, msg, qos=2, retain=true, true)
+    # Awaiting PR #16
+    #waitFor ctxMain.publish(tpc, msg, qos=2, retain=true, true)
 
     proc conn() {.async.} =
       var
@@ -39,23 +40,17 @@ suite "test suite for publish":
     waitFor conn()
 
 
-  #[
   test "publish multiple message fast":
-    echo "\n\n"
+    let (tpc, _) = tdata("publish multiple message fast")
+
     proc conn() {.async.} =
-      await ctx.start()
-      var count: int
-      while true:
-        #await sleepAsync(50) - needed until PR #13
-        asyncCheck ctx.publish("nmqtttest", $rand(9999), 0)
-        count += 1
-        if count == 10:
-          check(ctx.state == Connected)
-          break
-      await sleepAsync(2000)
-      await ctx.close()
+      var msg: int
+      for i in 1 .. 100:
+        await ctxMain.publish(tpc, $msg, 0)
+        msg += 1
+
+      await sleepAsync(500) # wait for msg to be received
+      check(msg == 100)
+      check(ctxMain.state == Connected)
 
     waitFor conn()
-
-    ## Fails, awaiting PR #13
-]#
