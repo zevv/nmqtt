@@ -39,12 +39,14 @@ proc mqttSub() {.async.} =
 
 proc mqttPub() {.async.} =
   await ctx.start()
-  await ctx.publish("test1", "hallo", 2, true)
+  await ctx.publish("test1", "hallo", 2, waitConfirmation=true)
+  await ctx.disconnect()
 
 proc mqttPubSleep() {.async.} =
   await ctx.start()
   await ctx.publish("test1", "hallo", 2)
   await sleepAsync 5000
+  await ctx.disconnect()
 
 #asyncCheck mqttSub
 #runForever()
@@ -52,8 +54,6 @@ proc mqttPubSleep() {.async.} =
 #waitFor mqttPub()
 # OR
 #waitFor mqttPubSleep()
-
-waitFor ctx.close()
 ```
 
 
@@ -109,7 +109,18 @@ ____
 proc start*(ctx: MqttCtx) {.async.} =
 ```
 
-Connect to the host.
+Connect to the broker.
+
+
+____
+
+## disconnect*
+
+```nim
+proc disconnect*(ctx: MqttCtx) {.async.} =
+```
+
+Disconnect from the broker.
 
 
 ____
