@@ -3,6 +3,8 @@ suite "test suite for publish":
 
 
   test "publish retain":
+    ## Awaiting PR #16
+
     let (tpc, msg) = tdata("publish retain")
     waitFor ctxMain.publish(tpc, msg, qos=2, retain=true, true)
 
