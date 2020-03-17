@@ -540,11 +540,11 @@ proc start*(ctx: MqttCtx) {.async.} =
   while ctx.state != Connected and ctx.state != Error:
     await sleepAsync 1000
 
-proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, waitConfirmation = false) {.async.} =
+proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false, waitConfirmation = false) {.async.} =
   ## Publish a message
 
   let msgId = ctx.nextMsgId()
-  ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, message: message, qos: qos)
+  ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qos, message: message, retain: retain)
   await ctx.work()
   if waitConfirmation:
     while ctx.workQueue.len > 0 and hasKey(ctx.workQueue, msgId):
