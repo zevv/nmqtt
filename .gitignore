@@ -1,2 +1,4 @@
 test/connection
-test/subpub
+test/subscribe
+test/publish
+test/tester
