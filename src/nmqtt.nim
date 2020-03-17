@@ -563,9 +563,9 @@ when isMainModule:
     proc flop() {.async.} =
       let ctx = newMqttCtx("hallo")
 
-    #ctx.set_host("test.mosquitto.org", 1883)
-    ctx.set_host("test.mosquitto.org", 8883, true)
-    ctx.set_ping_interval(10)
+      #ctx.set_host("test.mosquitto.org", 1883)
+      ctx.set_host("test.mosquitto.org", 8883, true)
+      ctx.set_ping_interval(10)
 
       await ctx.start()
       proc on_data(topic: string, message: string) =
