@@ -11,9 +11,8 @@ suite "test suite for connections":
       check(ctx.state == Connected)
       await ctx.publish(tpc, msg, 0)
       await sleepAsync(1500)
-      await ctx.close()
-      check(ctx.state == Disconnected)
-      ctx.state = Disabled # It is not possible to close the connection when state is Disconnected - issues/12
+      await ctx.disconnect()
+      check(ctx.state == Disabled)
     waitFor conn()
 
 
@@ -27,9 +26,8 @@ suite "test suite for connections":
       check(ctx.state == Connected)
       await ctx.publish(tpc, msg, 0)
       await sleepAsync(1500)
-      await ctx.close()
-      check(ctx.state == Disconnected)
-      ctx.state = Disabled # It is not possible to close the connection when state is Disconnected - issues/12
+      await ctx.disconnect()
+      check(ctx.state == Disabled)
     waitFor conn()
 
 
@@ -52,11 +50,12 @@ suite "test suite for connections":
       # Do important stuff
       await sleepAsync(500)
 
-      # Disconnect
-      await ctxSlave.close()
-
-      # Make sure connection is closed
-      await sleepAsync(1000)
+      # Close connection
+      await ctxSlave.close("User request")
       check(ctxSlave.state == Disconnected)
+
+      # Disconnect
+      await ctxSlave.disconnect()
+      check(ctxSlave.state == Disabled)
 
     waitFor conn()

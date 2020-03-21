@@ -41,12 +41,14 @@
 ##
 ##    proc mqttPub() {.async.} =
 ##      await ctx.start()
-##      await ctx.publish("test1", "hallo", 2, true)
+##      await ctx.publish("test1", "hallo", 2, waitConfirmation=true)
+##      await ctx.disconnect()
 ##
 ##    proc mqttPubSleep() {.async.} =
 ##      await ctx.start()
 ##      await ctx.publish("test1", "hallo", 2)
 ##      await sleepAsync 5000
+##      await ctx.disconnect()
 ##
 ##    #asyncCheck mqttSub
 ##    #runForever()
@@ -54,8 +56,6 @@
 ##    #waitFor mqttPub()
 ##    # OR
 ##    #waitFor mqttPubSleep()
-##
-##    waitFor ctx.close()
 
 #{.experimental: "codeReordering".}
 
@@ -212,9 +212,8 @@ proc nextMsgId(ctx: MqttCtx): MsgId =
 
 proc sendDisconnect(ctx: MqttCtx): Future[bool] {.async.}
 
-proc close*(ctx: MqttCtx, reason: string="User request") {.async.} =
-  ## Close the connection to the brooker
 
+proc close(ctx: MqttCtx, reason: string) {.async.} =
   if ctx.state in {Connecting, Connected}:
     ctx.state = Disconnecting
     ctx.dbg "Closing: " & reason
@@ -480,7 +479,9 @@ proc runPing(ctx: MqttCtx) {.async.} =
 
 proc runConnect(ctx: MqttCtx) {.async.} =
   while true:
-    if ctx.state == Disconnected:
+    if ctx.state == Disabled:
+      break
+    elif ctx.state == Disconnected:
       ctx.dbg "connecting to " & ctx.host & ":" & $ctx.port
       try:
         ctx.s = await asyncnet.dial(ctx.host, ctx.port)
@@ -490,7 +491,7 @@ proc runConnect(ctx: MqttCtx) {.async.} =
             wrapConnectedSocket(ctx.ssl, ctx.s, handshakeAsClient)
           else:
             ctx.wrn "requested SSL session but ssl is not enabled"
-            await ctx.close
+            await ctx.close("SSL not enabled")
             ctx.state = Error
         let ok = await ctx.sendConnect()
         if ok:
@@ -525,13 +526,13 @@ proc set_host*(ctx: MqttCtx, host: string, port: int=1883, doSsl=false) =
   ctx.doSsl = doSsl
 
 proc set_auth*(ctx: MqttCtx, username: string, password: string) =
-  ## Set the authentication for the host
+  ## Set the authentication for the host.
 
   ctx.username = username
   ctx.password = password
 
 proc start*(ctx: MqttCtx) {.async.} =
-  ## Connect to the host.
+  ## Connect to the broker.
 
   if ctx.pingTxInterval == 0:
     ctx.set_ping_interval()
@@ -539,6 +540,12 @@ proc start*(ctx: MqttCtx) {.async.} =
   asyncCheck ctx.runConnect()
   while ctx.state != Connected and ctx.state != Error:
     await sleepAsync 1000
+
+proc disconnect*(ctx: MqttCtx) {.async.} =
+  ## Disconnect from the broker.
+
+  await ctx.close("User request")
+  ctx.state = Disabled
 
 proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false, waitConfirmation = false) {.async.} =
   ## Publish a message
@@ -551,7 +558,7 @@ proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false,
       await sleepAsync 1000
 
 proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback): Future[void] =
-  ## Subscribe to a topic
+  ## Subscribe to a topic.
 
   let msgId = ctx.nextMsgId()
   ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, qos: qos)
@@ -574,8 +581,6 @@ when isMainModule:
       await ctx.subscribe("#", 2, on_data)
       await ctx.publish("test1", "hallo", 2)
       await sleepAsync 10000
-      await ctx.close()
+      await ctx.disconnect()
 
     waitFor flop()
-# vi: ft=nim et ts=2 sw=2
-

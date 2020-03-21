@@ -32,7 +32,7 @@ suite "test suite for publish retained":
         await sleepAsync(1000)
         timeout += 1
 
-      await ctxSlave.close()
+      await ctxSlave.disconnect()
       ctxSlave.state = Disabled
 
     waitFor conn()

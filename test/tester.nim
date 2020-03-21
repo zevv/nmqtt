@@ -34,8 +34,7 @@ proc tdata(t: string): (string, string) =
 
 include "connection.nim"
 include "subscribe.nim"
-#include "publish_retained.nim"
+include "publish_retained.nim"
 include "publish_qos.nim"
-#include "other.nim"
 
-waitFor ctxMain.close("Close ctxMain")
+waitFor ctxMain.disconnect()
