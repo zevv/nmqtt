@@ -1,5 +1,5 @@
 
-suite "test suite for publish":
+suite "test suite for publish retained":
 
   test "publish retain msg":
     ## Awaiting PR #16
@@ -15,13 +15,12 @@ suite "test suite for publish":
       # Start listening slave
       await ctxSlave.start()
       proc on_data(topic: string, message: string) =
-        echo topic
         if topic == tpc:
           check(message == msg)
           msgFound = true
           return
 
-      await ctxMain.subscribe(tpc, 2, on_data)
+      await ctxSlave.subscribe(tpc, 2, on_data)
 
       # Wait for retained msg is found
       while not msgFound:
@@ -35,21 +34,5 @@ suite "test suite for publish":
 
       await ctxSlave.close()
       ctxSlave.state = Disabled
-
-    waitFor conn()
-
-
-  test "publish multiple message fast":
-    let (tpc, _) = tdata("publish multiple message fast")
-
-    proc conn() {.async.} =
-      var msg: int
-      for i in 1 .. 100:
-        await ctxMain.publish(tpc, $msg, 0)
-        msg += 1
-
-      await sleepAsync(500) # wait for msg to be received
-      check(msg == 100)
-      check(ctxMain.state == Connected)
 
     waitFor conn()
