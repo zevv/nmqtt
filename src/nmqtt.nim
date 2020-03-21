@@ -356,7 +356,7 @@ proc sendPingReq(ctx: MqttCtx): Future[bool] =
   var pkt = newPkt(Pingreq)
   result = ctx.send(pkt)
 
-proc work(ctx: MqttCtx, connEstablished = false) {.async.} =
+proc work(ctx: MqttCtx) {.async.} =
   if ctx.inWork:
     return
   ctx.inWork = true
@@ -372,12 +372,6 @@ proc work(ctx: MqttCtx, connEstablished = false) {.async.} =
           else:
             work.state = WorkSent
 
-      if connEstablished:
-        # Error: Queue contains a message. Possible due to break in conn.
-        if work.state == WorkSent:
-          ctx.dbg "Error a msg died in the queue"
-          delWork.add msgId
-
     for msgId in delWork:
       ctx.workQueue.del msgId
   ctx.inWork = false
@@ -389,7 +383,7 @@ proc onConnAck(ctx: MqttCtx, pkt: Pkt): Future[void] =
     ctx.dbg "Connection established"
   else:
     ctx.wrn "Connect failed, code " & $code
-  result = ctx.work(true)
+  result = ctx.work()
 
 proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let qos = (pkt.flags shr 1) and 0x03
