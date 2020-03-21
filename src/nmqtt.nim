@@ -41,12 +41,14 @@
 ##
 ##    proc mqttPub() {.async.} =
 ##      await ctx.start()
-##      await ctx.publish("test1", "hallo", 2, true)
+##      await ctx.publish("test1", "hallo", 2, waitConfirmation=true)
+##      await ctx.disconnect()
 ##
 ##    proc mqttPubSleep() {.async.} =
 ##      await ctx.start()
 ##      await ctx.publish("test1", "hallo", 2)
 ##      await sleepAsync 5000
+##      await ctx.disconnect()
 ##
 ##    #asyncCheck mqttSub
 ##    #runForever()
@@ -54,8 +56,6 @@
 ##    #waitFor mqttPub()
 ##    # OR
 ##    #waitFor mqttPubSleep()
-##
-##    waitFor ctx.close()
 
 #{.experimental: "codeReordering".}
 
@@ -212,9 +212,8 @@ proc nextMsgId(ctx: MqttCtx): MsgId =
 
 proc sendDisconnect(ctx: MqttCtx): Future[bool] {.async.}
 
-proc close*(ctx: MqttCtx, reason: string="User request") {.async.} =
-  ## Close the connection to the brooker
 
+proc close(ctx: MqttCtx, reason: string) {.async.} =
   if ctx.state in {Connecting, Connected}:
     ctx.state = Disconnecting
     ctx.dbg "Closing: " & reason
@@ -526,7 +525,7 @@ proc set_host*(ctx: MqttCtx, host: string, port: int=1883, doSsl=false) =
   ctx.doSsl = doSsl
 
 proc set_auth*(ctx: MqttCtx, username: string, password: string) =
-  ## Set the authentication for the host
+  ## Set the authentication for the host.
 
   ctx.username = username
   ctx.password = password
@@ -542,6 +541,12 @@ proc start*(ctx: MqttCtx) {.async.} =
   ctx.state = Disconnected
   asyncCheck ctx.runConnect()
 
+proc disconnect*(ctx: MqttCtx) {.async.} =
+  ## Disconnect from the broker.
+
+  await ctx.close("User request")
+  ctx.state = Disabled
+
 proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false, waitConfirmation = false) {.async.} =
   ## Publish a message
 
@@ -553,7 +558,7 @@ proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false,
       await sleepAsync 1000
 
 proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback): Future[void] =
-  ## Subscribe to a topic
+  ## Subscribe to a topic.
 
   let msgId = ctx.nextMsgId()
   ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, qos: qos)
@@ -561,22 +566,21 @@ proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback): F
   result = ctx.work()
 
 when isMainModule:
-  proc flop() {.async.} =
-    let ctx = newMqttCtx("hallo")
+  when not defined(test):
+    proc flop() {.async.} =
+      let ctx = newMqttCtx("hallo")
 
-    #ctx.set_host("test.mosquitto.org", 1883)
-    ctx.set_host("test.mosquitto.org", 8883, true)
-    ctx.set_ping_interval(10)
+      #ctx.set_host("test.mosquitto.org", 1883)
+      ctx.set_host("test.mosquitto.org", 8883, true)
+      ctx.set_ping_interval(10)
 
-    await ctx.start()
-    proc on_data(topic: string, message: string) =
-      echo "got ", topic, ": ", message
+      await ctx.start()
+      proc on_data(topic: string, message: string) =
+        echo "got ", topic, ": ", message
 
-    await ctx.subscribe("#", 2, on_data)
-    await ctx.publish("test1", "hallo", 2)
-    await sleepAsync 10000
-    await ctx.close()
+      await ctx.subscribe("#", 2, on_data)
+      await ctx.publish("test1", "hallo", 2)
+      await sleepAsync 10000
+      await ctx.disconnect()
 
-  waitFor flop()
-# vi: ft=nim et ts=2 sw=2
-
+    waitFor flop()
