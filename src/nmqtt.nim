@@ -566,22 +566,30 @@ proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback): F
   result = ctx.work()
 
 when isMainModule:
-  proc flop() {.async.} =
-    let ctx = newMqttCtx("hallo")
+  when not defined(test):
+    proc flop() {.async.} =
+      let ctx = newMqttCtx("hallo")
 
-    #ctx.set_host("test.mosquitto.org", 1883)
-    ctx.set_host("test.mosquitto.org", 8883, true)
-    ctx.set_ping_interval(10)
+      #ctx.set_host("test.mosquitto.org", 1883)
+      ctx.set_host("test.mosquitto.org", 8883, true)
+      ctx.set_ping_interval(10)
 
-    await ctx.start()
-    proc on_data(topic: string, message: string) =
-      echo "got ", topic, ": ", message
+      await ctx.start()
+      proc on_data(topic: string, message: string) =
+        echo "got ", topic, ": ", message
 
+<<<<<<< HEAD
     await ctx.subscribe("#", 2, on_data)
     await ctx.publish("test1", "hallo", 2)
     await sleepAsync 10000
     await ctx.disconnect()
+=======
+      await ctx.subscribe("#", 2, on_data)
+      await ctx.publish("test1", "hallo", 2)
+      await sleepAsync 10000
+      await ctx.close()
+>>>>>>> master
 
-  waitFor flop()
+    waitFor flop()
 # vi: ft=nim et ts=2 sw=2
 
