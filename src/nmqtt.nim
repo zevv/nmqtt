@@ -479,6 +479,8 @@ proc runPing(ctx: MqttCtx) {.async.} =
 
 proc runConnect(ctx: MqttCtx) {.async.} =
   while true:
+    if ctx.state == Disabled:
+      break
     if ctx.state == Disconnected:
       ctx.dbg "connecting to " & ctx.host & ":" & $ctx.port
       try:
