@@ -578,18 +578,9 @@ when isMainModule:
       proc on_data(topic: string, message: string) =
         echo "got ", topic, ": ", message
 
-<<<<<<< HEAD
-    await ctx.subscribe("#", 2, on_data)
-    await ctx.publish("test1", "hallo", 2)
-    await sleepAsync 10000
-    await ctx.disconnect()
-=======
       await ctx.subscribe("#", 2, on_data)
       await ctx.publish("test1", "hallo", 2)
       await sleepAsync 10000
-      await ctx.close()
->>>>>>> master
+      await ctx.disconnect()
 
     waitFor flop()
-# vi: ft=nim et ts=2 sw=2
-
