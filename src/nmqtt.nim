@@ -481,7 +481,7 @@ proc runConnect(ctx: MqttCtx) {.async.} =
   while true:
     if ctx.state == Disabled:
       break
-    if ctx.state == Disconnected:
+    elif ctx.state == Disconnected:
       ctx.dbg "connecting to " & ctx.host & ":" & $ctx.port
       try:
         ctx.s = await asyncnet.dial(ctx.host, ctx.port)
