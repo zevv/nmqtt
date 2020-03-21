@@ -357,7 +357,7 @@ proc sendPingReq(ctx: MqttCtx): Future[bool] =
   var pkt = newPkt(Pingreq)
   result = ctx.send(pkt)
 
-proc work(ctx: MqttCtx, connEstablished = false) {.async.} =
+proc work(ctx: MqttCtx) {.async.} =
   if ctx.inWork:
     return
   ctx.inWork = true
@@ -373,12 +373,6 @@ proc work(ctx: MqttCtx, connEstablished = false) {.async.} =
           else:
             work.state = WorkSent
 
-      if connEstablished:
-        # Error: Queue contains a message. Possible due to break in conn.
-        if work.state == WorkSent:
-          ctx.dbg "Error a msg died in the queue"
-          delWork.add msgId
-
     for msgId in delWork:
       ctx.workQueue.del msgId
   ctx.inWork = false
@@ -390,7 +384,7 @@ proc onConnAck(ctx: MqttCtx, pkt: Pkt): Future[void] =
     ctx.dbg "Connection established"
   else:
     ctx.wrn "Connect failed, code " & $code
-  result = ctx.work(true)
+  result = ctx.work()
 
 proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let qos = (pkt.flags shr 1) and 0x03
@@ -478,28 +472,35 @@ proc runPing(ctx: MqttCtx) {.async.} =
       break
     await ctx.work()
 
+proc connectBroker(ctx: MqttCtx) {.async.} =
+  ## Connect to the broker
+  if ctx.pingTxInterval == 0:
+    ctx.pingTxInterval = 60 * 1000
+
+  ctx.dbg "connecting to " & ctx.host & ":" & $ctx.port
+  try:
+    ctx.s = await asyncnet.dial(ctx.host, ctx.port)
+    if ctx.doSsl:
+      when defined(ssl):
+        ctx.ssl = newContext(protSSLv23, CVerifyNone)
+        wrapConnectedSocket(ctx.ssl, ctx.s, handshakeAsClient)
+      else:
+        ctx.wrn "requested SSL session but ssl is not enabled"
+        await ctx.close
+        ctx.state = Error
+    let ok = await ctx.sendConnect()
+    if ok:
+      asyncCheck ctx.runRx()
+      asyncCheck ctx.runPing()
+  except OSError as e:
+    ctx.dbg "Error connecting to " & ctx.host & " " & e.msg
+    ctx.state = Error
+
 proc runConnect(ctx: MqttCtx) {.async.} =
+  ## Reconnect if connection to broker is disconnected
   while true:
     if ctx.state == Disconnected:
-      ctx.dbg "connecting to " & ctx.host & ":" & $ctx.port
-      try:
-        ctx.s = await asyncnet.dial(ctx.host, ctx.port)
-        if ctx.doSsl:
-          when defined(ssl):
-            ctx.ssl = newContext(protSSLv23, CVerifyNone)
-            wrapConnectedSocket(ctx.ssl, ctx.s, handshakeAsClient)
-          else:
-            ctx.wrn "requested SSL session but ssl is not enabled"
-            await ctx.close
-            ctx.state = Error
-        let ok = await ctx.sendConnect()
-        if ok:
-          asyncCheck ctx.runRx()
-          asyncCheck ctx.runPing()
-      except OSError as e:
-        ctx.dbg "Error connecting to " & ctx.host & " " & e.msg
-        ctx.state = Error
-
+      await ctx.connectBroker()
     await sleepAsync 1000
 
 #
@@ -511,8 +512,8 @@ proc newMqttCtx*(clientId: string): MqttCtx =
 
   MqttCtx(clientId: clientId)
 
-proc set_ping_interval*(ctx: MqttCtx, txInterval: int = 60) =
-  ## Set the clients ping interval in seconds. Default is 60 seconds.
+proc set_ping_interval*(ctx: MqttCtx, txInterval: int) =
+  ## Set the clients ping interval in seconds.
 
   if txInterval > 0 and txInterval < 65535:
     ctx.pingTxInterval = txInterval * 1000
@@ -530,15 +531,16 @@ proc set_auth*(ctx: MqttCtx, username: string, password: string) =
   ctx.username = username
   ctx.password = password
 
-proc start*(ctx: MqttCtx) {.async.} =
-  ## Connect to the host.
+proc connect*(ctx: MqttCtx) {.async.} =
+  ## Connect to the broker.
 
-  if ctx.pingTxInterval == 0:
-    ctx.set_ping_interval()
+  await ctx.connectBroker()
+
+proc start*(ctx: MqttCtx) {.async.} =
+  ## Auto-connecting to the broker.
+
   ctx.state = Disconnected
   asyncCheck ctx.runConnect()
-  while ctx.state != Connected and ctx.state != Error:
-    await sleepAsync 1000
 
 proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false, waitConfirmation = false) {.async.} =
   ## Publish a message

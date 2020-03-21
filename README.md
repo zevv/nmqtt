@@ -109,6 +109,17 @@ ____
 proc start*(ctx: MqttCtx) {.async.} =
 ```
 
+Auto-connect and reconnect to the host.
+
+
+____
+
+## connect*
+
+```nim
+proc conncet*(ctx: MqttCtx) {.async.} =
+```
+
 Connect to the host.
 
 
