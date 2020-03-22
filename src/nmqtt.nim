@@ -374,6 +374,7 @@ proc work(ctx: MqttCtx) {.async.} =
             delWork.add msgId
           else:
             work.state = WorkSent
+      # When PubRec is received, and we shall send a PubRel back
       elif work.wk == PubWork and work.qos == 2 and work.state == WorkAcked:
         work.state = WorkConfirm
         let ok = await ctx.sendWork(work)
