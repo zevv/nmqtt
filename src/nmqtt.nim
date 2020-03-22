@@ -129,7 +129,7 @@ type
     PubWork, SubWork
 
   WorkState = enum
-    WorkNew, WorkSent, WorkAcked
+    WorkNew, WorkSent, WorkAcked, WorkConfirm
 
   PubCallback = proc(topic: string, message: string)
 
