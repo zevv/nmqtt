@@ -346,14 +346,19 @@ proc sendPubRel(ctx: MqttCtx, msgId: MsgId): Future[bool] =
   result = ctx.send(pkt)
 
 proc sendWork(ctx: MqttCtx, work: Work): Future[bool] =
-  case work.wk
-  of PubWork:
-    if work.state == WorkConfirm:
-      result = ctx.sendPubRel(work.msgId)
-    else:
-      result = ctx.sendPublish(work.msgId, work.topic, work.message, work.qos, work.retain)
-  of SubWork:
-    result = ctx.sendSubscribe(work.msgId, work.topic, work.qos)
+    case work.wk
+    of PubWork:
+      if work.state == WorkConfirm:
+        result = ctx.sendPubRel(work.msgId)
+      else:
+        result = ctx.sendPublish(work.msgId, work.topic, work.message, work.qos, work.retain)
+    of SubWork:
+      if work.state == WorkAcked and work.qos == 1:
+        result = ctx.sendPubAck(work.msgId)
+      elif work.state == WorkConfirm and work.qos == 2:
+        result = ctx.sendPubRel(work.msgId)
+      else:
+        result = ctx.sendSubscribe(work.msgId, work.topic, work.qos)
 
 proc sendPingReq(ctx: MqttCtx): Future[bool] =
   var pkt = newPkt(Pingreq)
@@ -375,7 +380,11 @@ proc work(ctx: MqttCtx) {.async.} =
           else:
             work.state = WorkSent
       # When PubRec is received, and we shall send a PubRel back
-      elif work.wk == PubWork and work.qos == 2 and work.state == WorkAcked:
+      elif work.qos == 1 and work.state == WorkAcked and work.wk == SubWork:
+        let ok = await ctx.sendWork(work)
+        if ok:
+          delWork.add msgId
+      elif work.qos == 2 and work.state == WorkAcked:
         work.state = WorkConfirm
         let ok = await ctx.sendWork(work)
 
@@ -405,9 +414,11 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
   for cb in ctx.pubCallbacks:
     cb(topic, message)
   if qos == 1:
-    let ok = await ctx.sendPubAck(msgid)
+    ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, state: WorkAcked, qos: 1)
+    await ctx.work()
   if qos == 2:
-    let ok = await ctx.sendPubRel(msgid)
+    ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, state: WorkAcked, qos: 2)
+    await ctx.work()
 
 
 proc onPubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
@@ -430,7 +441,7 @@ proc onPubRec(ctx: MqttCtx, pkt: Pkt) {.async.} =
 proc onPubComp(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
   assert msgId in ctx.workQueue
-  assert ctx.workQueue[msgId].wk == PubWork
+  #assert ctx.workQueue[msgId].wk == PubWork
   assert ctx.workQueue[msgId].state == WorkConfirm
   assert ctx.workQueue[msgId].qos == 2
   ctx.workQueue.del msgId
