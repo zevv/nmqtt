@@ -199,6 +199,9 @@ proc newPkt(typ: PktType=NOTYPE, flags: uint8=0): Pkt =
 proc dmp(ctx: MqttCtx, s: string) =
   when defined(dev):
     stderr.write "\e[1;30m" & s & "\e[0m\n"
+  when defined(test):
+    let s = split(s, " ")
+    testDmp.add(@[$(s[0] & " " & s[1]), $join(s[2..s.len-1], " ")])
 
 proc dbg(ctx: MqttCtx, s: string) =
   stderr.write "\e[37m" & s & "\e[0m\n"
