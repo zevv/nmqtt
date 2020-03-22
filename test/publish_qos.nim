@@ -1,4 +1,4 @@
-const msgCount = 1000
+const msgCount = 500
 
 suite "test suite for publish with qos":
 
@@ -54,8 +54,6 @@ suite "test suite for publish with qos":
 
       proc on_data(topic: string, message: string) =
         if topic == tpc:
-          # and message == "final":
-          #check(message == $msgRec)
           msgRec += 1
           if msgRec == msgCount:
             msgFound = true

@@ -5,22 +5,21 @@ suite "test suite for publish retained":
     ## Awaiting PR #16
 
     let (tpc, msg) = tdata("publish retain msg")
-    waitFor ctxMain.publish(tpc, msg, qos=2, retain=true, true)
-
+    waitFor ctxMain.publish(tpc, msg, qos=1, retain=true, true)
+    waitFor sleepAsync 500
+    
     proc conn() {.async.} =
       var
         msgFound: bool
         timeout: int
 
       # Start listening slave
-      await ctxSlave.start()
       proc on_data(topic: string, message: string) =
         if topic == tpc:
           check(message == msg)
           msgFound = true
           return
-
-      await ctxSlave.subscribe(tpc, 2, on_data)
+      await ctxListen.subscribe(tpc, 2, on_data)
 
       # Wait for retained msg is found
       while not msgFound:
@@ -31,8 +30,5 @@ suite "test suite for publish retained":
           break
         await sleepAsync(1000)
         timeout += 1
-
-      await ctxSlave.disconnect()
-      ctxSlave.state = Disabled
 
     waitFor conn()

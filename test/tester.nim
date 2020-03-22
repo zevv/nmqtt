@@ -42,10 +42,10 @@ proc tdata(t: string): (string, string) =
   tout(topicTest, msg, t)
   return (topicTest, msg)
 
-#include "connection.nim"
+include "connection.nim"
 include "subscribe.nim"
-#include "publish_retained.nim"
-#include "publish_qos.nim"
+include "publish_retained.nim"
+include "publish_qos.nim"
 
 waitFor ctxMain.disconnect()
 waitFor ctxListen.disconnect()
