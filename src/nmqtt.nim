@@ -348,7 +348,10 @@ proc sendPubRel(ctx: MqttCtx, msgId: MsgId): Future[bool] =
 proc sendWork(ctx: MqttCtx, work: Work): Future[bool] =
   case work.wk
   of PubWork:
-    result = ctx.sendPublish(work.msgId, work.topic, work.message, work.qos, work.retain)
+    if work.state == WorkConfirm:
+      result = ctx.sendPubRel(work.msgId)
+    else:
+      result = ctx.sendPublish(work.msgId, work.topic, work.message, work.qos, work.retain)
   of SubWork:
     result = ctx.sendSubscribe(work.msgId, work.topic, work.qos)
 
@@ -371,6 +374,9 @@ proc work(ctx: MqttCtx) {.async.} =
             delWork.add msgId
           else:
             work.state = WorkSent
+        elif work.state == PubWork and work.qos == 2 and work.state == WorkAcked:
+          work.state = WorkConfirm
+          let ok = await ctx.sendWork(work)
 
     for msgId in delWork:
       ctx.workQueue.del msgId
