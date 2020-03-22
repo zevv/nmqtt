@@ -374,9 +374,9 @@ proc work(ctx: MqttCtx) {.async.} =
             delWork.add msgId
           else:
             work.state = WorkSent
-        elif work.state == PubWork and work.qos == 2 and work.state == WorkAcked:
-          work.state = WorkConfirm
-          let ok = await ctx.sendWork(work)
+      elif work.wk == PubWork and work.qos == 2 and work.state == WorkAcked:
+        work.state = WorkConfirm
+        let ok = await ctx.sendWork(work)
 
     for msgId in delWork:
       ctx.workQueue.del msgId
