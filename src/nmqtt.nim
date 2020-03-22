@@ -423,11 +423,11 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
 
 proc onPubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
-  if msgId in ctx.workQueue:
-    assert ctx.workQueue[msgId].wk == PubWork
-    assert ctx.workQueue[msgId].state == WorkSent
-    assert ctx.workQueue[msgId].qos == 1
-    ctx.workQueue.del msgId
+  assert msgId in ctx.workQueue
+  assert ctx.workQueue[msgId].wk == PubWork
+  assert ctx.workQueue[msgId].state == WorkSent
+  assert ctx.workQueue[msgId].qos == 1
+  ctx.workQueue.del msgId
 
 proc onPubRec(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
