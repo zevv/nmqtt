@@ -45,7 +45,7 @@ proc tdata(t: string): (string, string) =
   testDmp = @[]
   return (topicTest, msg)
 
-include "connection.nim"
+#include "connection.nim"
 include "subscribe.nim"
 include "publish_retained.nim"
 include "publish_qos.nim"
