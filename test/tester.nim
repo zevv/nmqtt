@@ -12,6 +12,7 @@ randomize()
 let ctxMain = newMqttCtx("nmqttTestMain")
 #ctxMain.set_host("test.mosquitto.org", 1883)
 ctxMain.set_host("127.0.0.1", 1883)
+ctxMain.set_ping_interval(120)
 waitFor ctxMain.start()
 
 # Test clíent slave:
@@ -20,6 +21,15 @@ waitFor ctxMain.start()
 let ctxSlave = newMqttCtx("nmqttTestSlave")
 #ctxSlave.set_host("test.mosquitto.org", 1883)
 ctxSlave.set_host("127.0.0.1", 1883)
+
+# Test clíent listen:
+# ctxListen is a client which only should be used to make subscribe
+# callbacks. Do not close it.
+let ctxListen = newMqttCtx("nmqttTestListen")
+#ctxSlave.set_host("test.mosquitto.org", 1883)
+ctxListen.set_host("127.0.0.1", 1883)
+ctxMain.set_ping_interval(120)
+waitFor ctxListen.start()
 
 proc tout(t, m, s: string) =
   ## Print test data during test.
