@@ -27,6 +27,7 @@ suite "test suite for subscribe":
       await ctxListen.subscribe(tpc, 1, on_data)
       await sleepAsync 500
       await ctxMain.publish(tpc, msg, 1)
+      await sleepAsync 500
 
     waitFor conn()
 
@@ -42,6 +43,7 @@ suite "test suite for subscribe":
       await ctxListen.subscribe(tpc, 2, on_data)
       await sleepAsync 500
       await ctxMain.publish(tpc, msg, 2)
+      await sleepAsync 500
 
     waitFor conn()
 
