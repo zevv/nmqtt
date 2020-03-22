@@ -2,6 +2,8 @@
 
 import asyncdispatch, unittest, oids, random
 
+var testDmp: seq[seq[string]]
+
 include ../src/nmqtt
 
 randomize()
@@ -40,6 +42,7 @@ proc tdata(t: string): (string, string) =
   let topicTest = $genOid()
   let msg = $rand(99999999)
   tout(topicTest, msg, t)
+  testDmp = @[]
   return (topicTest, msg)
 
 include "connection.nim"
