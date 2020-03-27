@@ -101,13 +101,38 @@ Set the authentication for the host
 
 ____
 
+## connect*
+
+```nim
+proc connect*(ctx: MqttCtx) {.async.} =
+```
+
+Connect to the broker.
+
+
+____
+
+## isConnected*
+
+```nim
+proc isConnected*(ctx: MqttCtx): bool =
+```
+
+Returns true, if the client is connected to the broker.
+
+
+____
+
 ## start*
 
 ```nim
 proc start*(ctx: MqttCtx) {.async.} =
 ```
 
-Connect to the broker.
+Auto-connect and reconnect to the broker. The client will try to
+reconnect when the state is `Disconnected` or `Error`. The `Error`-state
+happens, when the broker is down, but the client will try to reconnect
+until the broker is up again.
 
 
 ____

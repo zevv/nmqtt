@@ -544,30 +544,37 @@ proc runPing(ctx: MqttCtx) {.async.} =
       break
     await ctx.work()
 
+proc connectBroker(ctx: MqttCtx) {.async.} =
+  ## Connect to the broker
+  if ctx.pingTxInterval == 0:
+    ctx.pingTxInterval = 60 * 1000
+
+  ctx.dbg "connecting to " & ctx.host & ":" & $ctx.port
+  try:
+    ctx.s = await asyncnet.dial(ctx.host, ctx.port)
+    if ctx.doSsl:
+      when defined(ssl):
+        ctx.ssl = newContext(protSSLv23, CVerifyNone)
+        wrapConnectedSocket(ctx.ssl, ctx.s, handshakeAsClient)
+      else:
+        ctx.wrn "requested SSL session but ssl is not enabled"
+        await ctx.close
+        ctx.state = Error
+    let ok = await ctx.sendConnect()
+    if ok:
+      asyncCheck ctx.runRx()
+      asyncCheck ctx.runPing()
+  except OSError as e:
+    ctx.dbg "Error connecting to " & ctx.host & " " & e.msg
+    ctx.state = Error
+
 proc runConnect(ctx: MqttCtx) {.async.} =
+  ## Auto-connect and reconnect to broker
   while true:
     if ctx.state == Disabled:
       break
-    elif ctx.state == Disconnected:
-      ctx.dbg "connecting to " & ctx.host & ":" & $ctx.port
-      try:
-        ctx.s = await asyncnet.dial(ctx.host, ctx.port)
-        if ctx.doSsl:
-          when defined(ssl):
-            ctx.ssl = newContext(protSSLv23, CVerifyNone)
-            wrapConnectedSocket(ctx.ssl, ctx.s, handshakeAsClient)
-          else:
-            ctx.wrn "requested SSL session but ssl is not enabled"
-            await ctx.close("SSL not enabled")
-            ctx.state = Error
-        let ok = await ctx.sendConnect()
-        if ok:
-          asyncCheck ctx.runRx()
-          asyncCheck ctx.runPing()
-      except OSError as e:
-        ctx.dbg "Error connecting to " & ctx.host & " " & e.msg
-        ctx.state = Error
-
+    elif ctx.state in [Disconnected, Error]:
+      await ctx.connectBroker()
     await sleepAsync 1000
 
 #
@@ -576,47 +583,48 @@ proc runConnect(ctx: MqttCtx) {.async.} =
 
 proc newMqttCtx*(clientId: string): MqttCtx =
   ## Initiate a new MQTT client
-
   MqttCtx(clientId: clientId)
 
 proc set_ping_interval*(ctx: MqttCtx, txInterval: int = 60) =
   ## Set the clients ping interval in seconds. Default is 60 seconds.
-
   if txInterval > 0 and txInterval < 65535:
     ctx.pingTxInterval = txInterval * 1000
 
 proc set_host*(ctx: MqttCtx, host: string, port: int=1883, doSsl=false) =
   ## Set the MQTT host
-
   ctx.host = host
   ctx.port = Port(port)
   ctx.doSsl = doSsl
 
 proc set_auth*(ctx: MqttCtx, username: string, password: string) =
   ## Set the authentication for the host.
-
   ctx.username = username
   ctx.password = password
 
-proc start*(ctx: MqttCtx) {.async.} =
+proc connect*(ctx: MqttCtx) {.async.} =
   ## Connect to the broker.
+  await ctx.connectBroker()
 
-  if ctx.pingTxInterval == 0:
-    ctx.set_ping_interval()
+proc isConnected*(ctx: MqttCtx): bool =
+  ## Returns true, if the client is connected to the broker.
+  if ctx.state == Connected:
+    result = true
+
+proc start*(ctx: MqttCtx) {.async.} =
+  ## Auto-connect and reconnect to the broker. The client will try to
+  ## reconnect when the state is `Disconnected` or `Error`. The `Error`-state
+  ## happens, when the broker is down, but the client will try to reconnect
+  ## until the broker is up again.
   ctx.state = Disconnected
   asyncCheck ctx.runConnect()
-  while ctx.state != Connected and ctx.state != Error:
-    await sleepAsync 1000
 
 proc disconnect*(ctx: MqttCtx) {.async.} =
   ## Disconnect from the broker.
-
   await ctx.close("User request")
   ctx.state = Disabled
 
 proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false) {.async.} =
   ## Publish a message
-
   let msgId = ctx.nextMsgId()
   ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qos, message: message, retain: retain, typ: Publish)
   await ctx.work()
@@ -628,7 +636,6 @@ proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback): F
   ## .. code-block::nim
   ##    proc callbackName(topic: string, message: string) =
   ##      echo "Topic: ", topic, ": ", message
-
   let msgId = ctx.nextMsgId()
   ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, qos: qos, typ: Subscribe)
   ctx.pubCallbacks[topic] = callback
@@ -636,7 +643,6 @@ proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback): F
 
 proc unsubscribe*(ctx: MqttCtx, topic: string): Future[void] =
   ## Unsubscribe to a topic.
-
   let msgId = ctx.nextMsgId()
   ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, typ: Unsubscribe)
   result = ctx.work()
