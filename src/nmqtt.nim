@@ -626,6 +626,11 @@ proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false,
 
 proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback): Future[void] =
   ## Subscribe to a topic.
+  ## 
+  ## Access the callback with:
+  ## .. code-block::nim
+  ##    proc callbackName(topic: string, message: string) =
+  ##      echo "Topic: ", topic, ": ", message
 
   let msgId = ctx.nextMsgId()
   ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, qos: qos, typ: Subscribe)
