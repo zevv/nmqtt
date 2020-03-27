@@ -4,6 +4,10 @@ import asyncdispatch, unittest, oids, random
 
 var testDmp: seq[seq[string]]
 
+when not defined(test):
+  echo "Please run with -d:test, exiting"
+  quit()
+
 include ../src/nmqtt
 
 randomize()
@@ -45,8 +49,9 @@ proc tdata(t: string): (string, string) =
   testDmp = @[]
   return (topicTest, msg)
 
-#include "connection.nim"
+include "connection.nim"
 include "subscribe.nim"
+include "unsubscribe.nim"
 include "publish_retained.nim"
 include "publish_qos.nim"
 
