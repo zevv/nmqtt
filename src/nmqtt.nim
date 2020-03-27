@@ -79,7 +79,7 @@ type
     ssl: SslContext
     msgIdSeq: MsgId
     workQueue: Table[MsgId, Work]
-    pubCallbacks: seq[PubCallback]
+    pubCallbacks: Table[string, PubCallback]
     inWork: bool
     pingTxInterval: int # ms
 
@@ -421,7 +421,9 @@ proc work(ctx: MqttCtx) {.async.} =
           if await ctx.sendWork(work): work.state = WorkSent
 
         elif work.typ == Unsubscribe:
-          if await ctx.sendWork(work): work.state = WorkSent
+          if await ctx.sendWork(work):
+            work.state = WorkSent
+            ctx.pubCallbacks.del work.topic
 
 
     for msgId in delWork:
@@ -447,8 +449,8 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
   if qos == 1 or qos == 2:
     (msgid, offset) = pkt.getu16(offset)
   (message, offset) = pkt.getstring(offset, false)
-  for cb in ctx.pubCallbacks:
-    cb(topic, message)
+  for top, cb in ctx.pubCallbacks:
+    if top == topic: cb(topic, message)
   if qos == 1:
     ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 1, typ: PubAck)
     await ctx.work()
@@ -629,7 +631,7 @@ proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback): F
 
   let msgId = ctx.nextMsgId()
   ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, qos: qos, typ: Subscribe)
-  ctx.pubCallbacks.add callback
+  ctx.pubCallbacks[topic] = callback
   result = ctx.work()
 
 proc unsubscribe*(ctx: MqttCtx, topic: string): Future[void] =
