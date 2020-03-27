@@ -614,19 +614,16 @@ proc disconnect*(ctx: MqttCtx) {.async.} =
   await ctx.close("User request")
   ctx.state = Disabled
 
-proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false, waitConfirmation = false) {.async.} =
+proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false) {.async.} =
   ## Publish a message
 
   let msgId = ctx.nextMsgId()
   ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qos, message: message, retain: retain, typ: Publish)
   await ctx.work()
-  if waitConfirmation:
-    while ctx.workQueue.len > 0 and hasKey(ctx.workQueue, msgId):
-      await sleepAsync 1000
 
 proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback): Future[void] =
   ## Subscribe to a topic.
-  ## 
+  ##
   ## Access the callback with:
   ## .. code-block::nim
   ##    proc callbackName(topic: string, message: string) =
