@@ -425,7 +425,6 @@ proc work(ctx: MqttCtx) {.async.} =
             work.state = WorkSent
             ctx.pubCallbacks.del work.topic
 
-
     for msgId in delWork:
       ctx.workQueue.del msgId
   ctx.inWork = false
@@ -457,7 +456,6 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
   elif qos == 2:
     ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 2, typ: PubRec)
     await ctx.work()
-
 
 proc onPubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
@@ -641,22 +639,4 @@ proc unsubscribe*(ctx: MqttCtx, topic: string): Future[void] =
   ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, typ: Unsubscribe)
   result = ctx.work()
 
-when isMainModule:
-  when not defined(test):
-    proc flop() {.async.} =
-      let ctx = newMqttCtx("hallo")
 
-      #ctx.set_host("test.mosquitto.org", 1883)
-      ctx.set_host("test.mosquitto.org", 8883, true)
-      ctx.set_ping_interval(10)
-
-      await ctx.start()
-      proc on_data(topic: string, message: string) =
-        echo "got ", topic, ": ", message
-
-      await ctx.subscribe("#", 2, on_data)
-      await ctx.publish("test1", "hallo", 2)
-      await sleepAsync 10000
-      await ctx.disconnect()
-
-    waitFor flop()
