@@ -14,12 +14,12 @@ suite "test suite for publish retained":
         timeout: int
 
       # Start listening slave
-      proc on_data(topic: string, message: string) =
+      proc on_data_retain(topic: string, message: string) =
         if topic == tpc:
           check(message == msg)
           msgFound = true
           return
-      await ctxListen.subscribe(tpc, 2, on_data)
+      await ctxListen.subscribe(tpc, 2, on_data_retain)
 
       # Wait for retained msg is found
       while not msgFound:

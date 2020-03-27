@@ -11,15 +11,15 @@ suite "test suite for publish with qos":
         timeout: int
         msgRec: int
 
-      proc on_data(topic: string, message: string) =
+      await sleepAsync 1000
+
+      proc on_data_qos0(topic: string, message: string) =
         if topic == tpc:
-          # and message == "final":
-          check(message == $msgRec)
           msgRec += 1
           if msgRec == msgCount:
             msgFound = true
             return
-      await ctxListen.subscribe(tpc, 0, on_data)
+      await ctxListen.subscribe(tpc, 0, on_data_qos0)
 
       # Send msg with no delay
       var msg: int
@@ -40,7 +40,7 @@ suite "test suite for publish with qos":
       check(msgRec == msgCount)
       check(ctxMain.workQueue.len == 0) # A ping could cause a failure
       await ctxListen.unsubscribe(tpc)
-
+      await sleepAsync 500
     waitFor conn()
 
 
@@ -55,13 +55,13 @@ suite "test suite for publish with qos":
 
       await sleepAsync(2000)
 
-      proc on_data(topic: string, message: string) =
+      proc on_data_qos1(topic: string, message: string) =
         if topic == tpc:
           msgRec += 1
           if msgRec == msgCount:
             msgFound = true
             return
-      await ctxListen.subscribe(tpc, 0, on_data)
+      await ctxListen.subscribe(tpc, 0, on_data_qos1)
 
       # Send msg with no delay
       var msg: int
@@ -82,7 +82,7 @@ suite "test suite for publish with qos":
       check(msgRec == msgCount)
       check(ctxMain.workQueue.len == 0) # A ping could cause a failure
       await ctxListen.unsubscribe(tpc)
-
+      await sleepAsync 500
     waitFor conn()
 
 
@@ -97,13 +97,13 @@ suite "test suite for publish with qos":
 
       await sleepAsync(2000)
 
-      proc on_data(topic: string, message: string) =
+      proc on_data_qos2(topic: string, message: string) =
         if topic == tpc:
           msgRec += 1
           if msgRec == msgCount:
             msgFound = true
             return
-      await ctxListen.subscribe(tpc, 0, on_data)
+      await ctxListen.subscribe(tpc, 0, on_data_qos2)
 
       # Send msg with no delay
       var msg: int
@@ -123,5 +123,5 @@ suite "test suite for publish with qos":
       check(msgRec == msgCount)
       check(ctxMain.workQueue.len == 0) # A ping could cause a failure
       await ctxListen.unsubscribe(tpc)
-
+      await sleepAsync 500
     waitFor conn()
