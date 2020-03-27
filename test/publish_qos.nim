@@ -39,6 +39,7 @@ suite "test suite for publish with qos":
 
       check(msgRec == msgCount)
       check(ctxMain.workQueue.len == 0) # A ping could cause a failure
+      await ctxListen.unsubscribe(tpc)
 
     waitFor conn()
 
@@ -51,6 +52,8 @@ suite "test suite for publish with qos":
         msgFound: bool
         timeout: int
         msgRec: int
+
+      await sleepAsync(2000)
 
       proc on_data(topic: string, message: string) =
         if topic == tpc:
@@ -78,15 +81,12 @@ suite "test suite for publish with qos":
 
       check(msgRec == msgCount)
       check(ctxMain.workQueue.len == 0) # A ping could cause a failure
+      await ctxListen.unsubscribe(tpc)
 
     waitFor conn()
 
 
   test "publish multiple message fast qos=2":
-    ## FAILS messages cant keep up with the 4 way check (qos=2).
-    ## Furthermore this test currently has a 100 ms delay between
-    ## sending messages, otherwise it fails instantly.
-
     let (tpc, _) = tdata("publish multiple message fast qos=2")
 
     proc conn() {.async.} =
@@ -95,6 +95,8 @@ suite "test suite for publish with qos":
         timeout: int
         msgRec: int
 
+      await sleepAsync(2000)
+
       proc on_data(topic: string, message: string) =
         if topic == tpc:
           msgRec += 1
@@ -102,7 +104,6 @@ suite "test suite for publish with qos":
             msgFound = true
             return
       await ctxListen.subscribe(tpc, 0, on_data)
-      
 
       # Send msg with no delay
       var msg: int
@@ -121,5 +122,6 @@ suite "test suite for publish with qos":
 
       check(msgRec == msgCount)
       check(ctxMain.workQueue.len == 0) # A ping could cause a failure
+      await ctxListen.unsubscribe(tpc)
 
     waitFor conn()
