@@ -31,13 +31,13 @@ suite "test suite for connections":
     waitFor conn()
 
 
-  test "connection wrong port - timeout":
+  #[test "connection wrong port - timeout":
     proc conn() {.async.} =
       let ctx = newMqttCtx("nmqttTestConn")
       ctx.set_host("test.mosquitto.org", 2222)
       await ctx.start()
       check(ctx.state == Error)
-    waitFor conn()
+    waitFor conn()]#
 
 
   test "connect and disconnect, forget":
