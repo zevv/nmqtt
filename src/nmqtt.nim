@@ -339,6 +339,12 @@ proc sendSubscribe(ctx: MqttCtx, msgId: MsgId, topic: string, qos: Qos): Future[
   pkt.put qos.uint8
   result = ctx.send(pkt)
 
+proc sendUnsubscribe(ctx: MqttCtx, msgId: MsgId, topic: string): Future[bool] =
+  var pkt = newPkt(Unsubscribe, 0b0010)
+  pkt.put msgId.uint16
+  pkt.put topic, true
+  result = ctx.send(pkt)
+
 proc sendPubAck(ctx: MqttCtx, msgId: MsgId): Future[bool] =
   var pkt = newPkt(PubAck, 0b0010)
   pkt.put msgId.uint16
@@ -357,6 +363,10 @@ proc sendPubRel(ctx: MqttCtx, msgId: MsgId): Future[bool] =
 proc sendPubComp(ctx: MqttCtx, msgId: MsgId): Future[bool] =
   var pkt = newPkt(PubComp, 0b0010)
   pkt.put msgId.uint16
+  result = ctx.send(pkt)
+
+proc sendPingReq(ctx: MqttCtx): Future[bool] =
+  var pkt = newPkt(Pingreq)
   result = ctx.send(pkt)
 
 proc sendWork(ctx: MqttCtx, work: Work): Future[bool] =
@@ -379,9 +389,8 @@ proc sendWork(ctx: MqttCtx, work: Work): Future[bool] =
   of Subscribe:
     result = ctx.sendSubscribe(work.msgId, work.topic, work.qos)
 
-proc sendPingReq(ctx: MqttCtx): Future[bool] =
-  var pkt = newPkt(Pingreq)
-  result = ctx.send(pkt)
+  of Unsubscribe:
+    result = ctx.sendUnsubscribe(work.msgId, work.topic)
 
   else:
     ctx.wrn("Error sending unknown package: " & $work.typ)
@@ -486,6 +495,14 @@ proc onSubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
   assert msgId in ctx.workQueue
   assert ctx.workQueue[msgId].wk == SubWork
+  assert ctx.workQueue[msgId].state == WorkSent
+  ctx.workQueue.del msgId
+
+proc onUnsubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
+  let (msgId, _) = pkt.getu16(0)
+  assert msgId in ctx.workQueue
+  assert ctx.workQueue[msgId].wk == SubWork
+  assert ctx.workQueue[msgId].state == WorkSent
   ctx.workQueue.del msgId
 
 proc onPingResp(ctx: MqttCtx, pkt: Pkt) {.async.} =
@@ -500,6 +517,7 @@ proc handle(ctx: MqttCtx, pkt: Pkt) {.async.} =
     of PubRel: await ctx.onPubRel(pkt)
     of PubComp: await ctx.onPubComp(pkt)
     of SubAck: await ctx.onSubAck(pkt)
+    of UnsubAck: await ctx.onUnsubAck(pkt)
     of PingResp: await ctx.onPingResp(pkt)
     else: ctx.wrn "Unond pkt type " & $pkt.typ
 
@@ -612,6 +630,13 @@ proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback): F
   let msgId = ctx.nextMsgId()
   ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, qos: qos, typ: Subscribe)
   ctx.pubCallbacks.add callback
+  result = ctx.work()
+
+proc unsubscribe*(ctx: MqttCtx, topic: string): Future[void] =
+  ## Unsubscribe to a topic.
+
+  let msgId = ctx.nextMsgId()
+  ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, typ: Unsubscribe)
   result = ctx.work()
 
 when isMainModule:
