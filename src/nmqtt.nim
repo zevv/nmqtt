@@ -459,8 +459,8 @@ proc onPubRec(ctx: MqttCtx, pkt: Pkt) {.async.} =
 proc onPubComp(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
   assert msgId in ctx.workQueue
-  #assert ctx.workQueue[msgId].wk == PubWork
-  assert ctx.workQueue[msgId].state == WorkConfirm
+  assert ctx.workQueue[msgId].wk == PubWork
+  assert ctx.workQueue[msgId].state == WorkSent
   assert ctx.workQueue[msgId].qos == 2
   ctx.workQueue.del msgId
 
