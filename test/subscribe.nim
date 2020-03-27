@@ -2,7 +2,7 @@
 suite "test suite for subscribe":
 
   test "subscribe to topic qos=0":
-    let (tpc, msg) = tdata("subscribe to topic qos=1")
+    let (tpc, msg) = tdata("subscribe to topic qos=0")
 
     proc conn() {.async.} =
       proc on_data(topic: string, message: string) =
@@ -13,6 +13,7 @@ suite "test suite for subscribe":
       await sleepAsync 500
       await ctxMain.publish(tpc, msg, 0)
       await sleepAsync 500
+      await ctxListen.unsubscribe(tpc)
 
       check(testDmp[0][0] == "tx> Subscribe(02):")
       check(testDmp[1][0] == "rx> SubAck(00):") # and testDmp[1][1] == "00 01 00 ")
@@ -34,6 +35,7 @@ suite "test suite for subscribe":
       await sleepAsync 500
       await ctxMain.publish(tpc, msg, 1)
       await sleepAsync 500
+      await ctxListen.unsubscribe(tpc)
 
       check(testDmp[0][0] == "tx> Subscribe(02):")
       check(testDmp[1][0] == "rx> SubAck(00):" and testDmp[1][1] == "00 02 01 ") # and testDmp[1][1] == "00 01 01 ")
@@ -44,7 +46,7 @@ suite "test suite for subscribe":
 
     waitFor conn()
 
-  
+
   test "subscribe to topic qos=2":
     let (tpc, msg) = tdata("subscribe to topic qos=2")
 
@@ -57,6 +59,7 @@ suite "test suite for subscribe":
       await sleepAsync 500
       await ctxMain.publish(tpc, msg, 2)
       await sleepAsync 500
+      await ctxListen.unsubscribe(tpc)
 
       check(testDmp[0][0] == "tx> Subscribe(02):")
       check(testDmp[1][0] == "rx> SubAck(00):" and testDmp[1][1] == "00 03 02 ") # and testDmp[1][1] == "00 01 02 ")
@@ -65,8 +68,9 @@ suite "test suite for subscribe":
       check(testDmp[4][0] == "tx> PubRel(02):" and testDmp[4][1] == "00 03 ") # and testDmp[4][1] == "00 01 ")
       check(testDmp[5][0] == "rx> PubComp(00):" and testDmp[5][1] == "00 03 ") # and testDmp[5][1] == "00 01 ")
       check(testDmp[6][0] == "rx> Publish(04):")
-      check(testDmp[7][0] == "tx> PubRel(02):" and testDmp[7][1] == "00 02 ") # and testDmp[7][1] == "00 01 ")
-      check(testDmp[8][0] == "rx> PubComp(00):" and testDmp[8][1] == "00 02 ") # and testDmp[8][1] == "00 01 ")
+      check(testDmp[7][0] == "tx> PubRec(02):" and testDmp[7][1] == "00 02 ") # and testDmp[7][1] == "00 01 ")
+      check(testDmp[8][0] == "rx> PubRel(02):" and testDmp[8][1] == "00 02 ") # and testDmp[8][1] == "00 01 ")
+      check(testDmp[9][0] == "tx> PubComp(02):" and testDmp[9][1] == "00 02 ")
 
     waitFor conn()
 
