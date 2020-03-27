@@ -344,8 +344,18 @@ proc sendPubAck(ctx: MqttCtx, msgId: MsgId): Future[bool] =
   pkt.put msgId.uint16
   result = ctx.send(pkt)
 
+proc sendPubRec(ctx: MqttCtx, msgId: MsgId): Future[bool] =
+  var pkt = newPkt(PubRec, 0b0010)
+  pkt.put msgId.uint16
+  result = ctx.send(pkt)
+
 proc sendPubRel(ctx: MqttCtx, msgId: MsgId): Future[bool] =
   var pkt = newPkt(PubRel, 0b0010)
+  pkt.put msgId.uint16
+  result = ctx.send(pkt)
+
+proc sendPubComp(ctx: MqttCtx, msgId: MsgId): Future[bool] =
+  var pkt = newPkt(PubComp, 0b0010)
   pkt.put msgId.uint16
   result = ctx.send(pkt)
 
@@ -454,6 +464,14 @@ proc onPubRec(ctx: MqttCtx, pkt: Pkt) {.async.} =
   assert ctx.workQueue[msgId].qos == 2
   ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 2, typ: PubRel)
   await ctx.work()
+
+proc onPubRel(ctx: MqttCtx, pkt: Pkt) {.async.} =
+  let (msgId, _) = pkt.getu16(0)
+  assert msgId in ctx.workQueue
+  assert ctx.workQueue[msgId].wk == PubWork
+  assert ctx.workQueue[msgId].state == WorkSent
+  assert ctx.workQueue[msgId].qos == 2
+  ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 2, typ: PubComp)
   await ctx.work()
 
 proc onPubComp(ctx: MqttCtx, pkt: Pkt) {.async.} =
@@ -479,6 +497,7 @@ proc handle(ctx: MqttCtx, pkt: Pkt) {.async.} =
     of Publish: await ctx.onPublish(pkt)
     of PubAck: await ctx.onPubAck(pkt)
     of PubRec: await ctx.onPubRec(pkt)
+    of PubRel: await ctx.onPubRel(pkt)
     of PubComp: await ctx.onPubComp(pkt)
     of SubAck: await ctx.onSubAck(pkt)
     of PingResp: await ctx.onPingResp(pkt)
