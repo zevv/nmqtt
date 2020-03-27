@@ -7,7 +7,7 @@ suite "test suite for publish retained":
     let (tpc, msg) = tdata("publish retain msg")
     waitFor ctxMain.publish(tpc, msg, qos=1, retain=true, true)
     waitFor sleepAsync 500
-    
+
     proc conn() {.async.} =
       var
         msgFound: bool
@@ -30,5 +30,7 @@ suite "test suite for publish retained":
           break
         await sleepAsync(1000)
         timeout += 1
+
+      await ctxListen.unsubscribe(tpc)
 
     waitFor conn()
