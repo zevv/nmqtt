@@ -1,5 +1,3 @@
-# Copyright 2020 - Thomas T. Jarløv
-
 import asyncdispatch, unittest, oids, random
 
 var testDmp: seq[seq[string]]
@@ -52,8 +50,11 @@ proc tdata(t: string): (string, string) =
 include "connection.nim"
 include "subscribe.nim"
 include "unsubscribe.nim"
+include "publish.nim"
 include "publish_retained.nim"
 include "publish_qos.nim"
+include "ping.nim"
+include "utils.nim"
 
 waitFor ctxMain.disconnect()
 waitFor ctxListen.disconnect()
