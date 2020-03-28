@@ -34,7 +34,7 @@ proc mqttSubPub() {.async.} =
   # Callback when receiving on the topic
   proc on_data(topic: string, message: string) =
     echo "got ", topic, ": ", message
-  
+
   # Subscribe to topic
   await ctx.subscribe("nmqtt", 2, on_data)
   await sleepAsync 500
@@ -112,17 +112,6 @@ Connect to the broker.
 
 ____
 
-## isConnected*
-
-```nim
-proc isConnected*(ctx: MqttCtx): bool =
-```
-
-Returns true, if the client is connected to the broker.
-
-
-____
-
 ## start*
 
 ```nim
@@ -184,6 +173,32 @@ Access the callback with:
 proc callbackName(topic: string, message: string) =
   echo "Topic: ", topic, ": ", message
 ```
+
+____
+
+## isConnected*
+
+```nim
+proc isConnected*(ctx: MqttCtx): bool =
+```
+
+Returns true, if the client is connected to the broker.
+
+
+____
+
+## msgQueue*
+
+```nim
+proc msgQueue*(ctx: MqttCtx): int =
+```
+
+Returns the number of unfinished packages, which still are in the work queue.
+This includes all publish and subscribe packages, which has not been fully
+send, acknowledged or completed.
+
+You can use this to ensure, that all your of messages are sent, before
+exiting your program.
 
 
 ____
