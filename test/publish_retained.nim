@@ -2,8 +2,6 @@
 suite "test suite for publish retained":
 
   test "publish retain msg":
-    ## Awaiting PR #16
-
     let (tpc, msg) = tdata("publish retain msg")
     waitFor ctxMain.publish(tpc, msg, qos=1, retain=true)
     waitFor sleepAsync 500
