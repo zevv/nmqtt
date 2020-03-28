@@ -7,6 +7,7 @@ The library supports QOS 1, 2 and 3 for both publishing and subscribing.
 
 ## Examples
 
+### Subscribe to topic
 ```nim
 import nmqtt, asyncdispatch
 
@@ -22,12 +23,23 @@ proc mqttSub() {.async.} =
 
   await ctx.subscribe("nmqtt", 2, on_data)
 
+asyncCheck mqttSub
+runForever()
+```
+
+### Publish msg
+```nim
 proc mqttPub() {.async.} =
   await ctx.start()
   await ctx.publish("nmqtt", "hallo", 2)
   await sleepAsync 500
   await ctx.disconnect()
 
+waitFor mqttPub()
+```
+
+### Subscribe and publish
+```nim
 proc mqttSubPub() {.async.} =
   await ctx.start()
 
@@ -35,7 +47,7 @@ proc mqttSubPub() {.async.} =
   proc on_data(topic: string, message: string) =
     echo "got ", topic, ": ", message
 
-  # Subscribe to topic
+  # Subscribe to topic the topic `nmqtt`
   await ctx.subscribe("nmqtt", 2, on_data)
   await sleepAsync 500
 
@@ -46,12 +58,7 @@ proc mqttSubPub() {.async.} =
   # Disconnect
   await ctx.disconnect()
 
-#asyncCheck mqttSub
-#runForever()
-# OR
-#waitFor mqttPub()
-# OR
-#waitFor mqttSubPub()
+waitFor mqttSubPub()
 ```
 
 

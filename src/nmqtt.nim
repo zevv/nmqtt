@@ -4,27 +4,8 @@
 ## Examples
 ## --------
 ##
-## All in one
-## .. code-block::plain
-##    import nmqtt, asyncdispatch
-##
-##    let ctx = newMqttCtx("hallo")
-##
-##    ctx.set_host("test.mosquitto.org", 1883)
-##    #ctx.set_auth("username", "password")
-##
-##    await ctx.start()
-##    proc on_data(topic: string, message: string) =
-##      echo "got ", topic, ": ", message
-##
-##    await ctx.subscribe("#", 2, on_data)
-##    await ctx.publish("test1", "hallo", 2)
-##
-##    asyncCheck flop()
-##    runForever()
-##
-## Individual
-## .. code-block::plain
+## ### Subscribe to topic
+## .. code-block::nim
 ##    import nmqtt, asyncdispatch
 ##
 ##    let ctx = newMqttCtx("hallo")
@@ -37,25 +18,43 @@
 ##      proc on_data(topic: string, message: string) =
 ##        echo "got ", topic, ": ", message
 ##
-##      await ctx.subscribe("#", 2, on_data)
+##      await ctx.subscribe("nmqtt", 2, on_data)
 ##
+##    asyncCheck mqttSub
+##    runForever()
+##
+##
+## ### Publish msg
+## .. code-block::nim
 ##    proc mqttPub() {.async.} =
 ##      await ctx.start()
-##      await ctx.publish("test1", "hallo", 2, waitConfirmation=true)
+##      await ctx.publish("nmqtt", "hallo", 2)
 ##      await ctx.disconnect()
 ##
-##    proc mqttPubSleep() {.async.} =
+##    waitFor mqttPub()
+##
+## ### Subscribe and publish
+## .. code-block::nim
+##    proc mqttSubPub() {.async.} =
 ##      await ctx.start()
-##      await ctx.publish("test1", "hallo", 2)
-##      await sleepAsync 5000
+##
+##      # Callback when receiving on the topic
+##      proc on_data(topic: string, message: string) =
+##        echo "got ", topic, ": ", message
+##
+##      # Subscribe to topic the topic `nmqtt`
+##      await ctx.subscribe("nmqtt", 2, on_data)
+##      await sleepAsync 500
+##
+##      # Publish a message to the topic `nmqtt`
+##      await ctx.publish("nmqtt", "hallo", 2)
+##      await sleepAsync 500
+##
+##      # Disconnect
 ##      await ctx.disconnect()
 ##
-##    #asyncCheck mqttSub
-##    #runForever()
-##    # OR
-##    #waitFor mqttPub()
-##    # OR
-##    #waitFor mqttPubSleep()
+##    waitFor mqttSubPub()
+##
 
 #{.experimental: "codeReordering".}
 
