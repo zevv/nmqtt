@@ -7,7 +7,8 @@ suite "test suite for connections":
     proc conn() {.async.} =
       let ctx = newMqttCtx("nmqttTestConn")
       ctx.set_host("test.mosquitto.org", 1883)
-      await ctx.start()
+      await ctx.connect()
+      await sleepAsync(1500)
       check(ctx.state == Connected)
       await ctx.publish(tpc, msg, 0)
       await sleepAsync(1500)
@@ -22,7 +23,8 @@ suite "test suite for connections":
     proc conn() {.async.} =
       let ctx = newMqttCtx("nmqttTestConn")
       ctx.set_host("test.mosquitto.org", 8883, true)
-      await ctx.start()
+      await ctx.connect()
+      await sleepAsync(1500)
       check(ctx.state == Connected)
       await ctx.publish(tpc, msg, 0)
       await sleepAsync(1500)

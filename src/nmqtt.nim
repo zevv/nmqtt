@@ -557,7 +557,7 @@ proc connectBroker(ctx: MqttCtx) {.async.} =
         wrapConnectedSocket(ctx.ssl, ctx.s, handshakeAsClient)
       else:
         ctx.wrn "requested SSL session but ssl is not enabled"
-        await ctx.close
+        await ctx.close("SSL not enabled")
         ctx.state = Error
     let ok = await ctx.sendConnect()
     if ok:
@@ -654,3 +654,7 @@ proc msgQueue*(ctx: MqttCtx): int =
   ## You can use this to ensure, that all your of messages are sent, before
   ## exiting your program.
   result = ctx.workQueue.len()
+
+
+#when isMainModule:
+#  import cligen; dispatch(publish)
