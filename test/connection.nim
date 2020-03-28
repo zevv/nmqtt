@@ -40,21 +40,66 @@ suite "test suite for connections":
     waitFor conn()]#
 
 
-  test "connect and disconnect, forget":
+  test "connect() to broker":
     ## FAILS. Due to `runConnect` it will reconnect forever
 
     proc conn() {.async.} =
+      await ctxSlave.connect()
+      await sleepAsync(500)
+      check(ctxSlave.state == Connected)
+
+      # Do important stuff
+      await sleepAsync(500)
+
+      # Disconnect
+      await ctxSlave.disconnect()
+      check(ctxSlave.state == Disabled)
+
+    waitFor conn()
+
+
+  test "start() and reconnect":
+    ## FAILS. Due to `runConnect` it will reconnect forever
+
+    proc conn() {.async.} =
+      await sleepAsync(500)
       await ctxSlave.start()
+      await sleepAsync(500)
       check(ctxSlave.state == Connected)
 
       # Do important stuff
       await sleepAsync(500)
 
       # Close connection
-      await ctxSlave.close("User request")
-      check(ctxSlave.state == Disconnected)
+      ctxSlave.state = Disconnecting
+      ctxSlave.s.close()
+      echo(ctxSlave.state) # = Disconnected
+      await sleepAsync(500)
+
+      # Auto-reconnect goes on `Disconnected"
+      ctxSlave.state = Disconnected
+      # Auto-reconnect loop is 1000ms, wait 2000ms to ensure loop
+      await sleepAsync(2000)
+
+      # Check reconnect
+      check(ctxSlave.state == Connected)
 
       # Disconnect
+      await ctxSlave.disconnect()
+      check(ctxSlave.state == Disabled)
+
+    waitFor conn()
+
+
+  test "isConnected()":
+    ## FAILS. Due to `runConnect` it will reconnect forever
+
+    proc conn() {.async.} =
+      check(ctxSlave.isConnected() == false)
+      await ctxSlave.connect()
+      await sleepAsync(500)
+      check(ctxSlave.isConnected() == true)
+
       await ctxSlave.disconnect()
       check(ctxSlave.state == Disabled)
 
