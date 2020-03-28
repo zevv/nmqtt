@@ -448,7 +448,7 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
     (msgid, offset) = pkt.getu16(offset)
   (message, offset) = pkt.getstring(offset, false)
   for top, cb in ctx.pubCallbacks:
-    if top == topic: cb(topic, message)
+    if top == topic or top == "#": cb(topic, message)
   if qos == 1:
     ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 1, typ: PubAck)
     await ctx.work()
