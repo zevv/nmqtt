@@ -166,3 +166,318 @@ suite "test suite for subscribe":
     waitFor conn()
 
 
+  test "subscribe to #":
+    let (_, msg) = tdata("subscribe to #")
+
+    proc conn() {.async.} =
+      var msgCount: int
+      proc on_data_sub_all(topic: string, message: string) =
+        msgCount += 1
+
+      await ctxListen.subscribe("#", 0, on_data_sub_all)
+      await sleepAsync 500
+      await ctxMain.publish("random1", msg, 0)
+      await ctxMain.publish("random2", msg, 0)
+      await ctxMain.publish("random3", msg, 0)
+      await sleepAsync 500
+      await ctxListen.unsubscribe("#")
+      await sleepAsync 500
+      check(msgCount == 3)
+
+    waitFor conn()
+
+
+  test "stay subscribed after disconnect with reconnect":
+    let (tpc, msg) = tdata("stay subscribed after disconnect with reconnect")
+
+    proc conn() {.async.} =
+      await ctxSlave.start()
+      await sleepAsync(1000)
+      testDmp = @[]
+
+      var msgCount: int
+      proc on_data_sub_keep(topic: string, message: string) =
+        msgCount += 1
+
+      await ctxSlave.subscribe(tpc, 0, on_data_sub_keep)
+      await sleepAsync 500
+      await ctxMain.publish(tpc, msg, 0) # msg 1
+      await sleepAsync 500
+
+      # Disconnect
+      ctxSlave.state = Disconnecting
+      ctxSlave.s.close()
+      await sleepAsync(500)
+      ctxSlave.state = Disconnected
+      await sleepAsync(2000) # Auto-reconnect loop is 1000ms, wait 2000ms to ensure loop
+      # We should automatic reconnect here
+
+      await ctxMain.publish(tpc, msg, 0) # msg 2
+      await ctxMain.publish(tpc, msg, 0) # msg 3
+      await sleepAsync 500
+      await ctxSlave.unsubscribe(tpc)
+      await sleepAsync 500
+
+      check(msgCount == 3) # A total of 3 msgs on this topic
+      check(testDmp[0][0] == "tx> Subscribe(02):")
+      check(testDmp[1][0] == "rx> SubAck(00):")
+      check(testDmp[2][0] == "tx> Publish(00):")
+      check(testDmp[3][0] == "rx> Publish(00):")
+      # Disconnected
+      check(testDmp[4][0] == "tx> Connect(00):")
+      check(testDmp[5][0] == "rx> ConnAck(00):")
+      # Re-subscribe
+      check(testDmp[6][0] == "tx> Subscribe(02):")
+      check(testDmp[7][0] == "rx> SubAck(00):")
+      check(testDmp[8][0] == "tx> Publish(00):")
+      check(testDmp[9][0] == "tx> Publish(00):")
+      check(testDmp[10][0] == "rx> Publish(00):")
+      check(testDmp[11][0] == "rx> Publish(00):")
+      # Unsub
+      check(testDmp[12][0] == "tx> Unsubscribe(02):")
+      check(testDmp[13][0] == "rx> Unsuback(00):")
+
+    waitFor conn()
+
+
+  test "stay subscribed after disconnect with reconnect with same qos=2":
+    let (tpc, msg) = tdata("stay subscribed after disconnect with reconnect with same qos=2")
+
+    proc conn() {.async.} =
+      await ctxSlave.start()
+      await sleepAsync(1000)
+      testDmp = @[]
+
+      var msgCount: int
+      proc on_data_sub_keep(topic: string, message: string) =
+        msgCount += 1
+
+      await ctxSlave.subscribe(tpc, 2, on_data_sub_keep)
+      await sleepAsync 500
+      await ctxMain.publish(tpc, msg, 0) # msg 1
+      await sleepAsync 500
+
+      # Disconnect
+      ctxSlave.state = Disconnecting
+      ctxSlave.s.close()
+      await sleepAsync(500)
+      ctxSlave.state = Disconnected
+      await sleepAsync(2000) # Auto-reconnect loop is 1000ms, wait 2000ms to ensure loop
+      # We should automatic reconnect here
+
+      await ctxMain.publish(tpc, msg, 2) # msg 2
+      #await ctxMain.publish(tpc, msg, 0) # msg 3
+      await sleepAsync 500
+      await ctxSlave.unsubscribe(tpc)
+      await sleepAsync 500
+
+      check(msgCount == 2) # A total of 3 msgs on this topic
+
+      check(testDmp[0][0] == "tx> Subscribe(02):")
+      check(testDmp[1][0] == "rx> SubAck(00):")
+      check(testDmp[2][0] == "tx> Publish(00):")
+      check(testDmp[3][0] == "rx> Publish(00):")
+
+      # Disconnected
+      check(testDmp[4][0] == "tx> Connect(00):")
+      check(testDmp[5][0] == "rx> ConnAck(00):")
+
+      # Re-subscribe
+      check(testDmp[6][0] == "tx> Subscribe(02):")
+      check(testDmp[7][0] == "rx> SubAck(00):")
+
+      # Publish - qos=2
+      check(testDmp[8][0] == "tx> Publish(04):")
+      check(testDmp[9][0] == "rx> PubRec(00):")
+      check(testDmp[10][0] == "tx> PubRel(02):")
+      check(testDmp[11][0] == "rx> PubComp(00):")
+
+      # Subscribe - receive - qos=2
+      check(testDmp[12][0] == "rx> Publish(04):")
+      check(testDmp[13][0] == "tx> PubRec(02):")
+      check(testDmp[14][0] == "rx> PubRel(02):")
+      check(testDmp[15][0] == "tx> PubComp(02):")
+
+      # Unsub
+      check(testDmp[16][0] == "tx> Unsubscribe(02):")
+      check(testDmp[17][0] == "rx> Unsuback(00):")
+
+    waitFor conn()
+
+
+  test "stay subscribed after multipe (2) disconnect with reconnect":
+    let (tpc, msg) = tdata("stay subscribed after multipe (2) disconnect with reconnect")
+
+    proc conn() {.async.} =
+      await ctxSlave.start()
+      await sleepAsync(1000)
+      testDmp = @[]
+
+      var msgCount: int
+      proc on_data_sub_keep_multiple(topic: string, message: string) =
+        msgCount += 1
+
+      await ctxSlave.subscribe(tpc, 0, on_data_sub_keep_multiple)
+      await sleepAsync 500
+      await ctxMain.publish(tpc, msg, 0) # msg 1
+      await sleepAsync 500
+
+      # Disconnect 1/2
+      ctxSlave.state = Disconnecting
+      ctxSlave.s.close()
+      await sleepAsync(500)
+      ctxSlave.state = Disconnected
+      await sleepAsync(2000) # Auto-reconnect loop is 1000ms, wait 2000ms to ensure loop
+      # We should automatic reconnect here
+
+      # Disconnect 2/2
+      ctxSlave.state = Disconnecting
+      ctxSlave.s.close()
+      await sleepAsync(500)
+      ctxSlave.state = Disconnected
+      await sleepAsync(2000) # Auto-reconnect loop is 1000ms, wait 2000ms to ensure loop
+      # We should automatic reconnect here
+
+      await ctxMain.publish(tpc, msg, 0) # msg 2
+      await ctxMain.publish(tpc, msg, 0) # msg 3
+      await sleepAsync 500
+      await ctxSlave.unsubscribe(tpc)
+      await sleepAsync 500
+
+      check(msgCount == 3) # A total of 3 msgs on this topic
+      check(testDmp[0][0] == "tx> Subscribe(02):")
+      check(testDmp[1][0] == "rx> SubAck(00):")
+      check(testDmp[2][0] == "tx> Publish(00):")
+      check(testDmp[3][0] == "rx> Publish(00):")
+
+      # Disconnected 1/2
+      check(testDmp[4][0] == "tx> Connect(00):")
+      check(testDmp[5][0] == "rx> ConnAck(00):")
+      # Re-subscribe
+      check(testDmp[6][0] == "tx> Subscribe(02):")
+      check(testDmp[7][0] == "rx> SubAck(00):")
+
+      # Disconnected 1/2
+      check(testDmp[8][0] == "tx> Connect(00):")
+      check(testDmp[9][0] == "rx> ConnAck(00):")
+      # Re-subscribe
+      check(testDmp[10][0] == "tx> Subscribe(02):")
+      check(testDmp[11][0] == "rx> SubAck(00):")
+
+      check(testDmp[12][0] == "tx> Publish(00):")
+      check(testDmp[13][0] == "tx> Publish(00):")
+      check(testDmp[14][0] == "rx> Publish(00):")
+      check(testDmp[15][0] == "rx> Publish(00):")
+      # Unsub
+      check(testDmp[16][0] == "tx> Unsubscribe(02):")
+      check(testDmp[17][0] == "rx> Unsuback(00):")
+
+      await ctxSlave.disconnect()
+      await sleepAsync(1000)
+
+    waitFor conn()
+
+
+  test "stay subscribed after long disconnect with reconnect":
+    ## This test currently needs manual actions - you need to close/disconnect
+    ## your broker during the test and open/reconnect.
+
+    echo "\n\nTHIS TEST NEEDS MANUAL ACTIONS - STAY READY\n\n"
+
+    let (tpc, msg) = tdata("stay subscribed after long disconnect with reconnect")
+
+    proc conn() {.async.} =
+      # Disconnect main clients to avoid interference with result
+      await sleepAsync(1000)
+      waitFor ctxMain.disconnect()
+      waitFor ctxListen.disconnect()
+      await sleepAsync(1000)
+
+      await ctxSlave.start()
+      ctxSlave.set_ping_interval(90) # Increas ping to avoid interference with package order
+      await sleepAsync(1000)
+      testDmp = @[]
+
+      var msgCount: int
+      proc on_data_sub_keep_long(topic: string, message: string) =
+        msgCount += 1
+
+      await ctxSlave.subscribe(tpc, 0, on_data_sub_keep_long)
+      await sleepAsync 500
+      await ctxSlave.publish(tpc, msg, 0) # msg 1
+      await sleepAsync 500
+
+      # Disconnect
+      echo "\n\nDISCONNECT THE BROKER NOW\n\n"
+      await sleepAsync(2000)
+
+      # Publish messages while the broker is down
+      await ctxSlave.publish(tpc, msg, 0) # msg 2
+      await ctxSlave.publish(tpc, msg, 0) # msg 3
+      await ctxSlave.publish(tpc, msg, 0) # msg 4
+      await ctxSlave.publish(tpc, msg, 0) # msg 5
+      await sleepAsync(5000)
+
+      # Reconnect the broker
+      echo "\n\nCONNECT THE BROKER NOW\n\n"
+      await sleepAsync(4000)
+
+      # Send messages when the broker is up again
+      await ctxSlave.publish(tpc, msg, 0) # msg 2
+      await ctxSlave.publish(tpc, msg, 0) # msg 3
+      await sleepAsync 1500
+      await ctxSlave.unsubscribe(tpc)
+      await sleepAsync 500
+
+      check(msgCount == 7)
+
+      # Connect and send 1 messages
+      check(testDmp[0][0] == "tx> Subscribe(02):")
+      check(testDmp[1][0] == "rx> SubAck(00):")
+      check(testDmp[2][0] == "tx> Publish(00):")
+      check(testDmp[3][0] == "rx> Publish(00):")
+
+      # Manual disconnect
+      check(testDmp[4][0] == "tx> Disconnect(00):")
+
+      # Connect
+      check(testDmp[5][0] == "tx> Connect(00):")
+      check(testDmp[6][0] == "rx> ConnAck(00):")
+
+      # Re-subscribe
+      check(testDmp[7][0] == "tx> Subscribe(02):")
+
+      # Publish all messages in queue
+      check(testDmp[8][0] == "tx> Publish(00):")
+      check(testDmp[9][0] == "tx> Publish(00):")
+      check(testDmp[10][0] == "tx> Publish(00):")
+      check(testDmp[11][0] == "tx> Publish(00):")
+
+      # Receive subscribe ack
+      check(testDmp[12][0] == "rx> SubAck(00):")
+
+      # Receive all messages
+      check(testDmp[13][0] == "rx> Publish(00):")
+      check(testDmp[14][0] == "rx> Publish(00):")
+      check(testDmp[15][0] == "rx> Publish(00):")
+      check(testDmp[16][0] == "rx> Publish(00):")
+
+      # Publish the 2 last messages
+      check(testDmp[17][0] == "tx> Publish(00):")
+      check(testDmp[18][0] == "tx> Publish(00):")
+
+      # Receive the 2 last messages
+      check(testDmp[19][0] == "rx> Publish(00):")
+      check(testDmp[20][0] == "rx> Publish(00):")
+
+      # Unsub
+      check(testDmp[21][0] == "tx> Unsubscribe(02):")
+      check(testDmp[22][0] == "rx> Unsuback(00):")
+
+      # Reconnect main clients
+      await ctxSlave.disconnect()
+      await ctxMain.start()
+      await ctxListen.start()
+      await sleepAsync(1000)
+
+    waitFor conn()
