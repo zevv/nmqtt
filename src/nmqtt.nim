@@ -130,7 +130,9 @@ type
   WorkState = enum
     WorkNew, WorkSent, WorkAcked
 
-  PubCallback = proc(topic: string, message: string)
+  PubCallback = object
+    cb: proc(topic: string, message: string)
+    qos: int
 
   Work = ref object
     state: WorkState
@@ -448,7 +450,7 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
     (msgid, offset) = pkt.getu16(offset)
   (message, offset) = pkt.getstring(offset, false)
   for top, cb in ctx.pubCallbacks:
-    if top == topic or top == "#": cb(topic, message)
+    if top == topic or top == "#": cb.cb(topic, message)
   if qos == 1:
     ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 1, typ: PubAck)
     await ctx.work()
@@ -580,15 +582,13 @@ proc runConnect(ctx: MqttCtx) {.async.} =
       # that we still want to be Subscribed. PubCallbacks still holds the
       # callbacks, but we need to re-Subscribe to the broker.
       #
-      # If we Publish during the Disconnected, the msg will no be send, cause
-      # work() checks, that `state=Connected`. Therefor our re-Subscribe
+      # If we Publish during the Disconnected, the msg will not be send, cause
+      # work() checks that `state=Connected`. Therefor our re-Subscribe
       # will be inserted first in the queue.
-      #
-      # TODO: Currently qos is set to 0, since the original qos is not stored.
       if ctx.workQueue.len() == 0:
-        for top, _ in ctx.pubCallbacks:
+        for topic, cb in ctx.pubCallbacks:
           let msgId = ctx.nextMsgId()
-          ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: top, qos: 0, typ: Subscribe)
+          ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, qos: cb.qos, typ: Subscribe)
     await sleepAsync 1000
 
 #
@@ -638,7 +638,7 @@ proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false)
   ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qos, message: message, retain: retain, typ: Publish)
   await ctx.work()
 
-proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback): Future[void] =
+proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback.cb): Future[void] =
   ## Subscribe to a topic.
   ##
   ## Access the callback with:
@@ -647,7 +647,7 @@ proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback): F
   ##      echo "Topic: ", topic, ": ", message
   let msgId = ctx.nextMsgId()
   ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, qos: qos, typ: Subscribe)
-  ctx.pubCallbacks[topic] = callback
+  ctx.pubCallbacks[topic] = PubCallback(cb: callback, qos: qos)
   result = ctx.work()
 
 proc unsubscribe*(ctx: MqttCtx, topic: string): Future[void] =
