@@ -21,7 +21,7 @@ when isMainModule:
   let topLvlUse = """${doc}
 Usage:
   $command [options] -t {topic} -m {message}
-  $command [-h host -P port -u username -P password] -t {topic} -m {message}
+  $command [-h host -p port -u username -P password] -t {topic} -m {message}
 
 OPTIONS
 $options
