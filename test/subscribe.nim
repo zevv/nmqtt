@@ -240,6 +240,71 @@ suite "test suite for subscribe":
     waitFor conn()
 
 
+  test "stay subscribed after disconnect with reconnect with same qos=2":
+    let (tpc, msg) = tdata("stay subscribed after disconnect with reconnect with same qos=2")
+
+    proc conn() {.async.} =
+      await ctxSlave.start()
+      await sleepAsync(1000)
+      testDmp = @[]
+
+      var msgCount: int
+      proc on_data_sub_keep(topic: string, message: string) =
+        msgCount += 1
+
+      await ctxSlave.subscribe(tpc, 2, on_data_sub_keep)
+      await sleepAsync 500
+      await ctxMain.publish(tpc, msg, 0) # msg 1
+      await sleepAsync 500
+
+      # Disconnect
+      ctxSlave.state = Disconnecting
+      ctxSlave.s.close()
+      await sleepAsync(500)
+      ctxSlave.state = Disconnected
+      await sleepAsync(2000) # Auto-reconnect loop is 1000ms, wait 2000ms to ensure loop
+      # We should automatic reconnect here
+
+      await ctxMain.publish(tpc, msg, 2) # msg 2
+      #await ctxMain.publish(tpc, msg, 0) # msg 3
+      await sleepAsync 500
+      await ctxSlave.unsubscribe(tpc)
+      await sleepAsync 500
+
+      check(msgCount == 2) # A total of 3 msgs on this topic
+
+      check(testDmp[0][0] == "tx> Subscribe(02):")
+      check(testDmp[1][0] == "rx> SubAck(00):")
+      check(testDmp[2][0] == "tx> Publish(00):")
+      check(testDmp[3][0] == "rx> Publish(00):")
+
+      # Disconnected
+      check(testDmp[4][0] == "tx> Connect(00):")
+      check(testDmp[5][0] == "rx> ConnAck(00):")
+
+      # Re-subscribe
+      check(testDmp[6][0] == "tx> Subscribe(02):")
+      check(testDmp[7][0] == "rx> SubAck(00):")
+
+      # Publish - qos=2
+      check(testDmp[8][0] == "tx> Publish(04):")
+      check(testDmp[9][0] == "rx> PubRec(00):")
+      check(testDmp[10][0] == "tx> PubRel(02):")
+      check(testDmp[11][0] == "rx> PubComp(00):")
+
+      # Subscribe - receive - qos=2
+      check(testDmp[12][0] == "rx> Publish(04):")
+      check(testDmp[13][0] == "tx> PubRec(02):")
+      check(testDmp[14][0] == "rx> PubRel(02):")
+      check(testDmp[15][0] == "tx> PubComp(02):")
+
+      # Unsub
+      check(testDmp[16][0] == "tx> Unsubscribe(02):")
+      check(testDmp[17][0] == "rx> Unsuback(00):")
+
+    waitFor conn()
+
+
   test "stay subscribed after multipe (2) disconnect with reconnect":
     let (tpc, msg) = tdata("stay subscribed after multipe (2) disconnect with reconnect")
 
