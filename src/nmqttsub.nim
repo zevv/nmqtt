@@ -16,7 +16,6 @@ proc nmqttSub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", use
 
   await ctx.subscribe(topic, qos, on_data)
 
-  echo ctx.workQueue.len
   runForever()
 
 
