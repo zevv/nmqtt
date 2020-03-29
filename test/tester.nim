@@ -47,6 +47,8 @@ proc tdata(t: string): (string, string) =
   testDmp = @[]
   return (topicTest, msg)
 
+waitFor sleepAsync(1500) # Let the clients connect
+
 include "connection.nim"
 include "subscribe.nim"
 include "unsubscribe.nim"
