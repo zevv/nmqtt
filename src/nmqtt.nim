@@ -569,11 +569,26 @@ proc connectBroker(ctx: MqttCtx) {.async.} =
 
 proc runConnect(ctx: MqttCtx) {.async.} =
   ## Auto-connect and reconnect to broker
+  await ctx.connectBroker()
+
   while true:
     if ctx.state == Disabled:
       break
     elif ctx.state in [Disconnected, Error]:
       await ctx.connectBroker()
+      # If the client has been disconnect, it is necessary to tell the broker,
+      # that we still want to be Subscribed. PubCallbacks still holds the
+      # callbacks, but we need to re-Subscribe to the broker.
+      #
+      # If we Publish during the Disconnected, the msg will no be send, cause
+      # work() checks, that `state=Connected`. Therefor our re-Subscribe
+      # will be inserted first in the queue.
+      #
+      # TODO: Currently qos is set to 0, since the original qos is not stored.
+      if ctx.workQueue.len() == 0:
+        for top, _ in ctx.pubCallbacks:
+          let msgId = ctx.nextMsgId()
+          ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: top, qos: 0, typ: Subscribe)
     await sleepAsync 1000
 
 #
