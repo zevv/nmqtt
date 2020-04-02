@@ -34,14 +34,14 @@ $options
           doc="Subscribe to a topic on a MQTT-broker.",
           cmdName="nmqtt_sub",
           help={
-            "host":     "IP-address of the broker. Defaults to localhost.",
-            "port":     "network port to connect too. Defaults to 1883 for plan MQTT and 8883 for MQTT with SSL.",
+            "host":     "IP-address of the broker.",
+            "port":     "network port to connect too.",
             "ssl":      "enable ssl. Auto-enabled on port 8883.",
             "clientid": "your connection ID. Defaults to nmqtt_pub_ appended with processID.",
             "username": "provide a username",
             "password": "provide a password",
             "topic":    "MQTT topic to publish to.",
-            "qos":      "QOS: quality of service level to use for all messages. Defaults to 0.",
+            "qos":      "quality of service level to use for all messages.",
           },
           short={
             "password": 'P',
