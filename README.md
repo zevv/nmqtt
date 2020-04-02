@@ -61,6 +61,16 @@ proc mqttSubPub() {.async.} =
 waitFor mqttSubPub()
 ```
 
+# TODO
+
+## `subscribe()` & `unsubscribe()`
+
+It is currently not possible to fire 2 `subscribe()` or 2 `unsubscribe()`
+immediately after each other. This will cause a:
+```
+len(t) == L the length of the table changed while iterating over it
+```
+
 
 # Procs
 
