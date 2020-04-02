@@ -35,6 +35,7 @@ suite "test suite for unsubscribe":
       check(testDmp[6][0] == "tx> Publish(00):")
       check(testDmp.len() == 7)
 
+
     waitFor conn()
 
 
@@ -70,6 +71,7 @@ suite "test suite for unsubscribe":
       await sleepAsync 500
       await ctxListen.unsubscribe(tpc & "-1")
 
+      await sleepAsync 500
       check(ctxListen.pubCallbacks.len() == 0)
 
       check(topic2 == false)
