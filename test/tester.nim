@@ -53,10 +53,12 @@ include "connection.nim"
 include "subscribe.nim"
 include "unsubscribe.nim"
 include "publish.nim"
-include "publish_retained.nim"
 include "publish_qos.nim"
 include "ping.nim"
 include "utils.nim"
+include "publish_retained.nim" # Retained msg needs to be last test, since it
+                               # will store msg's, which will be caught be subs
+                               # on `#`.
 
 waitFor ctxMain.disconnect()
 waitFor ctxListen.disconnect()
