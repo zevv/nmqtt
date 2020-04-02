@@ -22,7 +22,7 @@ suite "test suite for ping":
       check(pingResp > 3)
 
       await ctxSlave.disconnect()
-      await sleepAsync(500)
+      await sleepAsync(1500)
 
       testDmp = @[]
       ctxSlave.set_ping_interval(60)
