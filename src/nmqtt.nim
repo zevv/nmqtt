@@ -64,8 +64,10 @@ import net
 import asyncDispatch
 import tables
 
-type
+#when defined(broker):
+import sequtils
 
+type
   MqttCtx* = ref object
     host: string
     port: Port
@@ -81,6 +83,37 @@ type
     pubCallbacks: Table[string, PubCallback]
     inWork: bool
     pingTxInterval: int # ms
+
+    #when defined(broker):
+    proto: string
+    version: uint8
+    connFlags: string
+    keepAlive: uint16
+    willTopic: string
+    willMessage: string
+    willRetain: bool
+    willQos: uint8
+    #username: string
+    #password: string
+    subscribed: Table[string, uint8] # Topic, Qos
+    lastAction: float # Check keepAlive
+
+  #when defined(broker):
+  MqttSub* = ref object ## Managing the subscribers
+    subscribers: Table[string, seq[MqttCtx]]
+
+  #when defined(broker):
+  MqttRetain* = ref object
+    messages: seq[string] # Topic, Msg, Qos
+
+  #when defined(broker):
+  ConnAckFlag = enum
+    ConnAcc               = 0x00
+    ConnRefProtocol       = 0x01
+    ConnRefRejected       = 0x02
+    ConnRefUnavailable    = 0x03
+    ConnRefBadUserPwd     = 0x04
+    ConnRefNotAuthorized  = 0x05
 
   State = enum
     Disabled, Disconnected, Connecting, Connected, Disconnecting, Error
@@ -140,12 +173,15 @@ type
     topic: string
     qos: Qos
     typ: PktType
+    #when defined(broker):
+    flags: uint16
     case wk: WorkKind
     of PubWork:
       retain: bool
       message: string
     of SubWork:
       discard
+
 
 #
 # Packet helpers
@@ -184,6 +220,17 @@ proc getstring(pkt: Pkt, offset: int, withLen: bool): (string, int) =
       val.add pkt.data[i].char
     result = (val, pkt.data.len)
 
+#when defined(broker):
+proc getstring(pkt: Pkt, offset: int, len: int): (string, int) =
+  var val: string
+  for i in offset..<len+offset:
+    val.add pkt.data[i].char
+  result = (val, len+offset)
+
+#when defined(broker):
+proc getbin(pkt: Pkt, b: int): (string, int) =
+  result = (toBin(parseBiggestInt($pkt.data[b]), 8), b+1)
+
 proc `$`(pkt: Pkt): string =
   result.add $pkt.typ & "(" & $pkt.flags.toHex & "): "
   for b in pkt.data:
@@ -195,8 +242,18 @@ proc newPkt(typ: PktType=NOTYPE, flags: uint8=0): Pkt =
   result.flags = flags
 
 #
-# MQTT context
+# Debug
 #
+
+#when defined(broker):
+proc dmp(ctx: MqttSub) =
+  #when defined(dev):
+  var output: string
+  for t, c in ctx.subscribers:
+    if output != "":
+      output.add(", ")
+    output.add("{" & t & ": " & $c.len & "}")
+  stderr.write "\e[37m" & "Subscribers>> " & output & "\e[0m\n"
 
 proc dmp(ctx: MqttCtx, s: string) =
   when defined(dev):
@@ -208,12 +265,74 @@ proc dmp(ctx: MqttCtx, s: string) =
 proc dbg(ctx: MqttCtx, s: string) =
   stderr.write "\e[37m" & s & "\e[0m\n"
 
+proc verbose(s: string) =
+  stderr.write "\e[37m" & s & "\e[0m\n"
+
 proc wrn(ctx: MqttCtx, s: string) =
   stderr.write "\e[1;31m" & s & "\e[0m\n"
+
+proc wrn(s: string) =
+  stderr.write "\e[1;31m" & s & "\e[0m\n"
+
+#
+# Subscribers
+#
+
+#when defined(broker):
+var mqttsub = MqttSub()
+
+#when defined(broker):
+proc addSubscriber*(ctx: MqttCtx, topic: string) {.async.} =
+  ## Adds a subscriber to MqttSub
+  try:
+    if mqttsub.subscribers.hasKey(topic):
+      mqttsub.subscribers[topic].insert(ctx)
+    else:
+      mqttsub.subscribers[topic] = @[ctx]
+  except:
+    wrn("crash adding a new subcriber")
+
+#when defined(broker):
+proc removeSubscriber*(ctx: MqttCtx, topic: string) {.async.} =
+  ## Removes a subscriber from specific topic
+  try:
+    if mqttsub.subscribers.hasKey(topic):
+      mqttsub.subscribers[topic] = filter(mqttsub.subscribers[topic], proc(x: MqttCtx): bool = x != ctx)
+  except:
+    wrn("crash removing subscriber with specific topic")
+
+#when defined(broker):
+proc removeSubscriber*(ctx: MqttCtx) {.async.} =
+  ## Removes a subscriber without knowing the topics
+  try:
+    for t, c in mqttsub.subscribers:
+      if ctx in c:
+        mqttsub.subscribers[t] = filter(c, proc(x: MqttCtx): bool = x != ctx)
+
+        if mqttsub.subscribers[t].len() == 0:
+          mqttsub.subscribers.del(t)
+  except:
+    wrn("crash removing subscriber without knowing topic")
+
+#when defined(broker):
+proc qosAlign(qP, qS: uint8): uint8 =
+  ## Aligns the for publisher and subscriber.
+  if qP == qS:
+    result = qP
+  elif qP > qS:
+    result = qS
+  elif qP < qS:
+    result = qP
+
+
+#
+# MQTT context
+#
 
 proc nextMsgId(ctx: MqttCtx): MsgId =
   inc ctx.msgIdSeq
   return ctx.msgIdSeq
+
 
 proc sendDisconnect(ctx: MqttCtx): Future[bool] {.async.}
 
@@ -318,8 +437,39 @@ proc sendConnect(ctx: MqttCtx): Future[bool] =
   ctx.state = Connecting
   result = ctx.send(pkt)
 
+#when defined(broker):
+proc sendConnAck(ctx: MqttCtx, flags: uint16): Future[bool] =
+  var pkt = newPkt(ConnAck)
+  pkt.put flags.uint16
+  result = ctx.send(pkt)
+
 proc sendDisconnect(ctx: MqttCtx): Future[bool] =
   let pkt = newPkt(Disconnect, 0)
+  result = ctx.send(pkt)
+
+proc sendSubscribe(ctx: MqttCtx, msgId: MsgId, topic: string, qos: Qos): Future[bool] =
+  var pkt = newPkt(Subscribe, 0b0010)
+  pkt.put msgId.uint16
+  pkt.put topic, true
+  pkt.put qos.uint8
+  result = ctx.send(pkt)
+
+#when defined(broker):
+proc sendSubAck(ctx: MqttCtx, msgId: MsgId): Future[bool] =
+  var pkt = newPkt(SubAck, 0b0010)
+  pkt.put msgId.uint16
+  result = ctx.send(pkt)
+
+proc sendUnsubscribe(ctx: MqttCtx, msgId: MsgId, topic: string): Future[bool] =
+  var pkt = newPkt(Unsubscribe, 0b0010)
+  pkt.put msgId.uint16
+  pkt.put topic, true
+  result = ctx.send(pkt)
+
+#when defined(broker):
+proc sendUnsubAck(ctx: MqttCtx, msgId: MsgId): Future[bool] =
+  var pkt = newPkt(Unsuback, 0b0010)
+  pkt.put msgId.uint16
   result = ctx.send(pkt)
 
 proc sendPublish(ctx: MqttCtx, msgId: MsgId, topic: string, message: string, qos: Qos, retain: bool): Future[bool] =
@@ -331,19 +481,6 @@ proc sendPublish(ctx: MqttCtx, msgId: MsgId, topic: string, message: string, qos
   if qos > 0:
     pkt.put msgId.uint16
   pkt.put message, false
-  result = ctx.send(pkt)
-
-proc sendSubscribe(ctx: MqttCtx, msgId: MsgId, topic: string, qos: Qos): Future[bool] =
-  var pkt = newPkt(Subscribe, 0b0010)
-  pkt.put msgId.uint16
-  pkt.put topic, true
-  pkt.put qos.uint8
-  result = ctx.send(pkt)
-
-proc sendUnsubscribe(ctx: MqttCtx, msgId: MsgId, topic: string): Future[bool] =
-  var pkt = newPkt(Unsubscribe, 0b0010)
-  pkt.put msgId.uint16
-  pkt.put topic, true
   result = ctx.send(pkt)
 
 proc sendPubAck(ctx: MqttCtx, msgId: MsgId): Future[bool] =
@@ -370,6 +507,11 @@ proc sendPingReq(ctx: MqttCtx): Future[bool] =
   var pkt = newPkt(Pingreq)
   result = ctx.send(pkt)
 
+#when defined(broker):
+proc sendPingResp(ctx: MqttCtx): Future[bool] =
+  var pkt = newPkt(PingResp)
+  result = ctx.send(pkt)
+
 proc sendWork(ctx: MqttCtx, work: Work): Future[bool] =
   case work.typ
   of Publish:   # Publish
@@ -393,6 +535,22 @@ proc sendWork(ctx: MqttCtx, work: Work): Future[bool] =
   of Unsubscribe:
     result = ctx.sendUnsubscribe(work.msgId, work.topic)
 
+  of ConnAck:
+    #when defined(broker):
+    result = ctx.sendConnAck(work.flags)
+
+  of PingResp:
+    #when defined(broker):
+    result = ctx.sendPingResp()
+
+  of SubAck:
+    #when defined(broker):
+    result = ctx.sendSubAck(work.msgId)
+
+  of Unsuback:
+    #when defined(broker):
+    result = ctx.sendUnsubAck(work.msgId)
+
   else:
     ctx.wrn("Error sending unknown package: " & $work.typ)
 
@@ -407,6 +565,12 @@ proc work(ctx: MqttCtx) {.async.} =
                                   # while iterating over it`
     for msgId, work in workQueue:
 
+      #when defined(broker):
+      if work.typ in [ConnAck, SubAck, UnsubAck, PingResp]:
+        if await ctx.sendWork(work):
+          delWork.add msgId
+          continue
+
       if work.wk == PubWork and work.state == WorkNew:
         if work.typ == Publish and work.qos == 0:
           if await ctx.sendWork(work): delWork.add msgId
@@ -420,6 +584,7 @@ proc work(ctx: MqttCtx) {.async.} =
         else:
           if await ctx.sendWork(work): work.state = WorkSent
 
+      #when not defined(broker):
       elif work.wk == SubWork and work.state == WorkNew:
         if work.typ == Subscribe:
           if await ctx.sendWork(work): work.state = WorkSent
@@ -432,6 +597,90 @@ proc work(ctx: MqttCtx) {.async.} =
     for msgId in delWork:
       ctx.workQueue.del msgId
   ctx.inWork = false
+
+#when defined(broker):
+proc sendWill(ctx: MqttCtx) {.async.} =
+  ## Send the will
+  if ctx.willTopic != "":
+    for c in mqttsub.subscribers[ctx.willTopic]:
+      let msgId = c.nextMsgId()
+      let qos = qosAlign(ctx.willQos, c.subscribed[ctx.willTopic])
+      c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: ctx.willTopic, qos: qos, message: ctx.willMessage, typ: Publish)
+      await c.work()
+
+#when defined(broker):
+proc publishToSubscribers(seqctx: seq[MqttCtx], pkt: Pkt, topic, message: string, qos: uint8) {.async.} =
+  ## Publish async to clients
+  for c in seqctx:
+    let msgId = c.nextMsgId()
+    let qosSub = qosAlign(qos, c.subscribed[topic])
+    #echo qos
+    #echo c.subscribed[topic]
+    #let qosSub = qosAlign(qos, qos)
+    c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qosSub, message: message, typ: Publish)
+    await c.work()
+
+#when defined(broker):
+proc onConnect(ctx: MqttCtx, pkt: Pkt) {.async.} =
+  var
+    offset: int
+    nextLen: uint16
+
+  # Main data
+  (ctx.proto, offset)     = pkt.getstring(0, true)
+  (ctx.version, offset)   = pkt.getu8(offset)
+  (ctx.connFlags, offset) = getbin(pkt, offset)
+  (ctx.keepAlive, offset) = pkt.getu16(offset)
+  # ClientID
+  (nextLen, offset)       = pkt.getu16(offset)
+  (ctx.clientId, offset)  = pkt.getstring(offset, parseInt($nextLen))
+
+  # Will Topic
+  if ctx.connFlags[5] == '1':
+    (nextLen, offset)         = pkt.getu16(offset)
+    (ctx.willTopic, offset)   = pkt.getstring(offset,  parseInt($nextLen))
+    (nextLen, offset)         = pkt.getu16(offset)
+    (ctx.willMessage, offset) = pkt.getstring(offset,  parseInt($nextLen))
+
+    # Will Retain
+    if ctx.connFlags[2] == '1':
+      ctx.willRetain = true
+
+    # Will qos=2
+    if ctx.connFlags[3] == '1':
+      ctx.willQos = 2.uint8
+    # Will qos=1
+    elif ctx.connFlags[4] == '1':
+      ctx.willQos = 1.uint8
+
+  # Username
+  if ctx.connFlags[0] == '1':
+    (nextLen, offset)       = pkt.getu16(offset)
+    (ctx.username, offset)  = pkt.getstring(offset,  parseInt($nextLen))
+
+  # Password
+  if ctx.connFlags[1] == '1':
+    (nextLen, offset)      = pkt.getu16(offset)
+    (ctx.password, offset) = pkt.getstring(offset,  parseInt($nextLen))
+
+  # TODO: Check password, length of clientId, etc. etc.
+  # if password != ctx.password and username != ctx.username:
+  #   connFlag = ConnRefBadUserPwd
+  # elif ctx.proto != "MQTT":
+  #   connFlag = ConnRefProtocol
+  # elif ctx.version != 4:
+  #   connFlag = ConnRefProtocol
+  # elif ctx.clientid == "":
+  #   connFlag = ConnRefRejected
+  # else:
+  ctx.state = Connected
+  let connFlag = ConnAcc
+
+  when defined(verbose):
+    echo ctx.clientId & " has connected"
+
+  ctx.workQueue[0.uint16] = Work(wk: PubWork, flags: ConnAcc.uint16, state: WorkNew, qos: 0, typ: ConnAck)
+  await ctx.work()
 
 proc onConnAck(ctx: MqttCtx, pkt: Pkt): Future[void] =
   ctx.state = Connected
@@ -452,8 +701,17 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
   if qos == 1 or qos == 2:
     (msgid, offset) = pkt.getu16(offset)
   (message, offset) = pkt.getstring(offset, false)
-  for top, cb in ctx.pubCallbacks:
-    if top == topic or top == "#": cb.cb(topic, message)
+
+  when defined(broker):
+    if mqttsub.subscribers.hasKey("#"):
+      await publishToSubscribers(mqttsub.subscribers["#"], pkt, "#", message, qos)
+    if mqttsub.subscribers.hasKey(topic):
+      await publishToSubscribers(mqttsub.subscribers[topic], pkt, topic, message, qos)
+
+  when not defined(broker):
+    for top, cb in ctx.pubCallbacks:
+      if top == topic or top == "#": cb.cb(topic, message)
+
   if qos == 1:
     ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 1, typ: PubAck)
     await ctx.work()
@@ -495,6 +753,32 @@ proc onPubComp(ctx: MqttCtx, pkt: Pkt) {.async.} =
   assert ctx.workQueue[msgId].qos == 2
   ctx.workQueue.del msgId
 
+#when defined(broker):
+proc onSubscribe(ctx: MqttCtx, pkt: Pkt) {.async.} =
+  var
+    offset: int
+    msgId: MsgId
+    topic: string
+    qos: uint8
+    nextLen: uint16
+
+  when defined(broker):
+    (msgId, offset) = pkt.getu16(0)
+    ctx.msgIdSeq    = msgId
+
+    while offset < pkt.data.len:
+      (nextLen, offset) = pkt.getu16(offset)
+      (topic, offset)   = pkt.getstring(offset, parseInt($nextLen))
+      (qos, offset)     = pkt.getu8(offset)
+
+      ctx.subscribed[topic] = qos
+      await addSubscriber(ctx, topic)
+
+    mqttsub.dmp()
+
+    ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 0, typ: SubAck)
+    await ctx.work()
+
 proc onSubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
   assert msgId in ctx.workQueue
@@ -502,12 +786,54 @@ proc onSubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   assert ctx.workQueue[msgId].state == WorkSent
   ctx.workQueue.del msgId
 
+#when defined(broker):
+proc onUnsubscribe(ctx: MqttCtx, pkt: Pkt) {.async.} =
+  var
+    offset: int
+    msgId: MsgId
+    topic: string
+    nextLen: uint16
+
+  when defined(broker):
+    (msgId, offset) = pkt.getu16(0)
+    ctx.msgIdSeq    = msgId
+
+    while offset < pkt.data.len:
+      (nextLen, offset) = pkt.getu16(offset)
+      (topic, offset)   = pkt.getstring(offset, parseInt($nextLen))
+
+      await removeSubscriber(ctx, topic)
+      ctx.subscribed.del(topic)
+
+    mqttsub.dmp()
+
+    ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 0, typ: UnsubAck)
+    await ctx.work()
+
 proc onUnsubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
   assert msgId in ctx.workQueue
   assert ctx.workQueue[msgId].wk == SubWork
   assert ctx.workQueue[msgId].state == WorkSent
   ctx.workQueue.del msgId
+
+#when defined(broker):
+proc onDisconnect(ctx: MqttCtx, pkt: Pkt) {.async.} =
+  when defined(broker):
+    await removeSubscriber(ctx)
+    await sendWill(ctx)
+    ctx.state = Disconnected
+  when defined(verbose):
+    verbose(ctx.clientid & " has disconnected")
+
+#when defined(broker):
+proc onPingReq(ctx: MqttCtx, pkt: Pkt) {.async.} =
+  when defined(broker):
+    var msgId = ctx.nextMsgId() + 1000
+    while ctx.workQueue.hasKey(msgId):
+      msgId += 1000
+    ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 0, typ: PingResp)
+    await ctx.work()
 
 proc onPingResp(ctx: MqttCtx, pkt: Pkt) {.async.} =
   discard
@@ -523,6 +849,12 @@ proc handle(ctx: MqttCtx, pkt: Pkt) {.async.} =
     of SubAck: await ctx.onSubAck(pkt)
     of UnsubAck: await ctx.onUnsubAck(pkt)
     of PingResp: await ctx.onPingResp(pkt)
+    #when defined(broker):
+    of Connect: await ctx.onConnect(pkt)
+    of Subscribe: await ctx.onSubscribe(pkt)
+    of Unsubscribe: await ctx.onUnsubscribe(pkt)
+    of Disconnect: await ctx.onDisconnect(pkt)
+    of PingReq: await ctx.onPingReq(pkt)
     else: ctx.wrn "Unond pkt type " & $pkt.typ
 
 #
@@ -537,10 +869,10 @@ proc runRx(ctx: MqttCtx) {.async.} =
         break
       await ctx.handle(pkt)
   except OsError:
-    echo "Boom"
+    ctx.wrn "Boom"
 
 proc runPing(ctx: MqttCtx) {.async.} =
-  echo "runping"
+  verbose("runping")
   while true:
     await sleepAsync ctx.pingTxInterval
     let ok = await ctx.sendPingReq()

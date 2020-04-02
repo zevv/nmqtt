@@ -4,7 +4,7 @@ author        = "zevv"
 description   = "Native MQTT client library and binaries"
 license       = "MIT"
 srcDir        = "src"
-bin           = @["nmqtt_pub", "nmqtt_sub"]
+bin           = @["nmqtt_pub", "nmqtt_sub", "nmqtt_broker"]
 
 
 # Dependencies
