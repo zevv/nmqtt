@@ -1,9 +1,93 @@
-## Native Nim MQTT client library
+# Native Nim MQTT client library
 
-This library includes all the needed `procs` for publishing MQTT messages to
-a MQTT-broker and for subscribing to a topic on a MQTT-broker.
+This is a hybrid package including a native Nim MQTT library and
+binaries for publishing and subscribing to a MQTT-broker.
 
-The library supports QOS 1, 2 and 3 for both publishing and subscribing.
+* [Install](#Install)
+* [Binaries](#Binaries)
+  * [Publish](#Publish)
+  * [Subscribe](#Subscribe)
+* [Library](#Library)
+  * [Examples](#Examples)
+  * [Procs](#Procs)
+
+
+# Install
+
+You can install this package with Nimble:
+```nim
+$ nimble install nmqtt
+```
+
+or cloning and installing:
+```nim
+$ git clone https://github.com/zevv/nmqtt.git && cd nmqtt
+$ nimble install
+```
+
+# Binaries
+
+The package provides 2 binaries for publishing messages to a MQTT-broker and
+for subscribing to a MQTT-broker.
+
+## Publish
+```bash
+$ ./nmqtt_pub --help
+Publish MQTT messages to a MQTT-broker.
+
+Usage:
+  nmqtt_pub [options] -t {topic} -m {message}
+  nmqtt_pub [-h host -p port -u username -P password] -t {topic} -m {message}
+
+OPTIONS
+  -?, --help                     print this cligen-erated help
+  --help-syntax                  advanced: prepend,plurals,..
+  -h=, --host=      "127.0.0.1"  IP-address of the broker.
+  -p=, --port=      1883         network port to connect too.
+  --ssl             false        enable ssl. Auto-enabled on port 8883.
+  -c=, --clientid=  ""           your connection ID. Defaults to nmqtt_pub_ appended with processID.
+  -u=, --username=  ""           provide a username
+  -P=, --password=  ""           provide a password
+  -t=, --topic=     REQUIRED     MQTT topic to publish to.
+  -m=, --msg=       REQUIRED     set msg
+  -q=, --qos=       0            quality of service level to use for all messages.
+  -r, --retain      false        retain messages on the broker.
+  -v, --verbose     false        set verbose
+```
+
+_`-verbose` not implemented yet_
+
+
+## Subscribe
+```bash
+$ ./nmqtt_sub --help
+Subscribe to a topic on a MQTT-broker.
+
+Usage:
+  nmqtt_sub [options] -t {topic}
+  nmqtt_sub [-h host -p port -u username -P password] -t {topic}
+
+OPTIONS
+  -?, --help                     print this cligen-erated help
+  --help-syntax                  advanced: prepend,plurals,..
+  -h=, --host=      "127.0.0.1"  IP-address of the broker.
+  -p=, --port=      1883         network port to connect too.
+  --ssl             false        enable ssl. Auto-enabled on port 8883.
+  -c=, --clientid=  ""           your connection ID. Defaults to nmqtt_pub_ appended with processID.
+  -u=, --username=  ""           provide a username
+  -P=, --password=  ""           provide a password
+  -t=, --topic=     REQUIRED     MQTT topic to publish to.
+  -q=, --qos=       0            quality of service level to use for all messages.
+  -v, --verbose     false        set verbose
+```
+
+_`-verbose` not implemented yet_
+
+
+# Library
+
+This library includes all the needed proc's for publishing MQTT messages to
+a MQTT-broker and for subscribing to a topic on a MQTT-broker. The library supports QOS 1, 2 and 3 for both publishing and subscribing and sending retained messages.
 
 ## Examples
 
@@ -61,26 +145,11 @@ proc mqttSubPub() {.async.} =
 waitFor mqttSubPub()
 ```
 
-# TODO
-
-## `subscribe()` & `unsubscribe()`
-
-We currently need to copy the `workQueue` before looping through it to avoid
-an assert. Investigate performance impact.
-```
-# To avoid:
-len(t) == L the length of the table changed while iterating over it
-# we need to:
-let workQueue = ctx.workQueue
-for msgId, work in workQueue:
-# instead of:
-for msgId, work in ctx.workQueue:
-```
 
 
-# Procs
+## Procs
 
-## newMqttCtx*
+### newMqttCtx*
 
 ```nim
 proc newMqttCtx*(clientId: string): MqttCtx =
@@ -91,7 +160,7 @@ Initiate a new MQTT client
 
 ____
 
-## set_ping_interval*
+### set_ping_interval*
 
 ```nim
 proc set_ping_interval*(ctx: MqttCtx, txInterval: int) =
@@ -102,7 +171,7 @@ Set the clients ping interval in seconds. Default is 60 seconds.
 
 ____
 
-## set_host*
+### set_host*
 
 ```nim
 proc set_host*(ctx: MqttCtx, host: string, port: int=1883, doSsl=false) =
@@ -113,7 +182,7 @@ Set the MQTT host
 
 ____
 
-## set_auth*
+### set_auth*
 
 ```nim
 proc set_auth*(ctx: MqttCtx, username: string, password: string) =
@@ -124,7 +193,7 @@ Set the authentication for the host
 
 ____
 
-## connect*
+### connect*
 
 ```nim
 proc connect*(ctx: MqttCtx) {.async.} =
@@ -135,7 +204,7 @@ Connect to the broker.
 
 ____
 
-## start*
+### start*
 
 ```nim
 proc start*(ctx: MqttCtx) {.async.} =
@@ -149,7 +218,7 @@ until the broker is up again.
 
 ____
 
-## disconnect*
+### disconnect*
 
 ```nim
 proc disconnect*(ctx: MqttCtx) {.async.} =
@@ -160,7 +229,7 @@ Disconnect from the broker.
 
 ____
 
-## publish*
+### publish*
 
 ```nim
 proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false) {.async.} =
@@ -171,25 +240,13 @@ Publish a message
 
 ____
 
-## subscribe*
+### subscribe*
 
 ```nim
 proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback): Future[void] =
 ```
 
 Subscribe to a topic
-
-
-____
-
-
-## unsubscribe*
-
-```nim
-proc unsubscribe*(ctx: MqttCtx, topic: string): Future[void] =
-```
-
-Unubscribe from a topic.
 
 Access the callback with:
 ```nim
@@ -199,7 +256,19 @@ proc callbackName(topic: string, message: string) =
 
 ____
 
-## isConnected*
+
+### unsubscribe*
+
+```nim
+proc unsubscribe*(ctx: MqttCtx, topic: string): Future[void] =
+```
+
+Unubscribe from a topic.
+
+
+____
+
+### isConnected*
 
 ```nim
 proc isConnected*(ctx: MqttCtx): bool =
@@ -210,7 +279,7 @@ Returns true, if the client is connected to the broker.
 
 ____
 
-## msgQueue*
+### msgQueue*
 
 ```nim
 proc msgQueue*(ctx: MqttCtx): int =
