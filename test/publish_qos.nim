@@ -1,5 +1,4 @@
-# Copyright 2020 - Thomas T. Jarløv
-
+const msgCount = 500
 
 suite "test suite for publish with qos":
 
@@ -12,40 +11,36 @@ suite "test suite for publish with qos":
         timeout: int
         msgRec: int
 
-      # Checking for final msg
-      proc on_data(topic: string, message: string) =
+      await sleepAsync 1000
+
+      proc on_data_qos0(topic: string, message: string) =
         if topic == tpc:
-          # and message == "final":
-          check(message == $msgRec)
           msgRec += 1
-          if msgRec == 99:
+          if msgRec == msgCount:
             msgFound = true
             return
-
-      # Start listening
-      await ctxSlave.start()
-      await ctxSlave.subscribe(tpc, 2, on_data)
+      await ctxListen.subscribe(tpc, 0, on_data_qos0)
 
       # Send msg with no delay
       var msg: int
-      for i in 1 .. 100:
+      for i in 0 .. msgCount-1:
         await ctxMain.publish(tpc, $msg, 0)
         msg += 1
 
-      check(msg == 100)
+      check(msg == msgCount)
       check(ctxMain.state == Connected)
 
       # Wait for final msg is found
       while not msgFound:
         if timeout == 5:
-          check(msgFound == true)
           break
         await sleepAsync(1000)
         timeout += 1
 
-      await ctxSlave.close("Close ctxSlave")
-      ctxSlave.state = Disabled
-
+      check(msgRec == msgCount)
+      check(ctxMain.workQueue.len == 0) # A ping could cause a failure
+      await ctxListen.unsubscribe(tpc)
+      await sleepAsync 500
     waitFor conn()
 
 
@@ -58,48 +53,40 @@ suite "test suite for publish with qos":
         timeout: int
         msgRec: int
 
-      # Checking for final msg
-      proc on_data(topic: string, message: string) =
+      await sleepAsync(2000)
+
+      proc on_data_qos1(topic: string, message: string) =
         if topic == tpc:
-          # and message == "final":
-          check(message == $msgRec)
           msgRec += 1
-          if msgRec == 99:
+          if msgRec == msgCount:
             msgFound = true
             return
-
-      # Start listening
-      await ctxSlave.start()
-      await ctxSlave.subscribe(tpc, 2, on_data)
+      await ctxListen.subscribe(tpc, 0, on_data_qos1)
 
       # Send msg with no delay
       var msg: int
-      for i in 1 .. 100:
+      for i in 0 .. msgCount-1:
         await ctxMain.publish(tpc, $msg, 1)
         msg += 1
 
-      check(msg == 100)
+      check(msg == msgCount)
       check(ctxMain.state == Connected)
 
       # Wait for final msg is found
       while not msgFound:
         if timeout == 5:
-          check(msgFound == true)
           break
         await sleepAsync(1000)
         timeout += 1
 
-      await ctxSlave.close("Close ctxSlave")
-      ctxSlave.state = Disabled
-
+      check(msgRec == msgCount)
+      check(ctxMain.workQueue.len == 0) # A ping could cause a failure
+      await ctxListen.unsubscribe(tpc)
+      await sleepAsync 500
     waitFor conn()
 
 
   test "publish multiple message fast qos=2":
-    ## FAILS messages cant keep up with the 4 way check (qos=2).
-    ## Furthermore this test currently has a 100 ms delay between
-    ## sending messages, otherwise it fails instantly.
-
     let (tpc, _) = tdata("publish multiple message fast qos=2")
 
     proc conn() {.async.} =
@@ -108,14 +95,23 @@ suite "test suite for publish with qos":
         timeout: int
         msgRec: int
 
+      await sleepAsync(2000)
+
+      proc on_data_qos2(topic: string, message: string) =
+        if topic == tpc:
+          msgRec += 1
+          if msgRec == msgCount:
+            msgFound = true
+            return
+      await ctxListen.subscribe(tpc, 0, on_data_qos2)
+
       # Send msg with no delay
       var msg: int
-      for i in 1 .. 100:
-        await sleepAsync 10
+      for i in 0 .. msgCount-1:
         await ctxMain.publish(tpc, $msg, 2)
         msg += 1
 
-      check(msg == 100)
+      check(msg == msgCount)
       check(ctxMain.state == Connected)
 
       while ctxMain.workQueue.len > 0:
@@ -124,7 +120,8 @@ suite "test suite for publish with qos":
         await sleepAsync(1000)
         timeout += 1
 
-      # A ping could cause a failure
-      check(ctxMain.workQueue.len == 0)
-
+      check(msgRec == msgCount)
+      check(ctxMain.workQueue.len == 0) # A ping could cause a failure
+      await ctxListen.unsubscribe(tpc)
+      await sleepAsync 500
     waitFor conn()

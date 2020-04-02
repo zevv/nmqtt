@@ -1,31 +1,17 @@
-## Native Nim MQTT client library, work in progress
+## Native Nim MQTT client library
+
+This library includes all the needed `procs` for publishing MQTT messages to
+a MQTT-broker and for subscribing to a topic on a MQTT-broker.
+
+The library supports QOS 1, 2 and 3 for both publishing and subscribing.
 
 ## Examples
 
-All in one
+### Subscribe to topic
 ```nim
 import nmqtt, asyncdispatch
 
-let ctx = newMqttCtx("hallo")
-
-ctx.set_host("test.mosquitto.org", 1883)
-#ctx.set_auth("username", "password")
-
-await ctx.start()
-proc on_data(topic: string, message: string) =
-  echo "got ", topic, ": ", message
-
-await ctx.subscribe("#", 2, on_data)
-await ctx.publish("test1", "hallo", 2)
-
-runForever()
-```
-
-Individual
-```nim
-import nmqtt, asyncdispatch
-
-let ctx = newMqttCtx("hallo")
+let ctx = newMqttCtx("nmqttClient")
 ctx.set_host("test.mosquitto.org", 1883)
 #ctx.set_auth("username", "password")
 #ctx.set_ping_interval(30)
@@ -35,25 +21,44 @@ proc mqttSub() {.async.} =
   proc on_data(topic: string, message: string) =
     echo "got ", topic, ": ", message
 
-  await ctx.subscribe("#", 2, on_data)
+  await ctx.subscribe("nmqtt", 2, on_data)
 
+asyncCheck mqttSub
+runForever()
+```
+
+### Publish msg
+```nim
 proc mqttPub() {.async.} =
   await ctx.start()
-  await ctx.publish("test1", "hallo", 2, waitConfirmation=true)
+  await ctx.publish("nmqtt", "hallo", 2)
+  await sleepAsync 500
   await ctx.disconnect()
 
-proc mqttPubSleep() {.async.} =
+waitFor mqttPub()
+```
+
+### Subscribe and publish
+```nim
+proc mqttSubPub() {.async.} =
   await ctx.start()
-  await ctx.publish("test1", "hallo", 2)
-  await sleepAsync 5000
+
+  # Callback when receiving on the topic
+  proc on_data(topic: string, message: string) =
+    echo "got ", topic, ": ", message
+
+  # Subscribe to topic the topic `nmqtt`
+  await ctx.subscribe("nmqtt", 2, on_data)
+  await sleepAsync 500
+
+  # Publish a message to the topic `nmqtt`
+  await ctx.publish("nmqtt", "hallo", 2)
+  await sleepAsync 500
+
+  # Disconnect
   await ctx.disconnect()
 
-#asyncCheck mqttSub
-#runForever()
-# OR
-#waitFor mqttPub()
-# OR
-#waitFor mqttPubSleep()
+waitFor mqttSubPub()
 ```
 
 
@@ -103,13 +108,27 @@ Set the authentication for the host
 
 ____
 
+## connect*
+
+```nim
+proc connect*(ctx: MqttCtx) {.async.} =
+```
+
+Connect to the broker.
+
+
+____
+
 ## start*
 
 ```nim
 proc start*(ctx: MqttCtx) {.async.} =
 ```
 
-Connect to the broker.
+Auto-connect and reconnect to the broker. The client will try to
+reconnect when the state is `Disconnected` or `Error`. The `Error`-state
+happens, when the broker is down, but the client will try to reconnect
+until the broker is up again.
 
 
 ____
@@ -128,7 +147,7 @@ ____
 ## publish*
 
 ```nim
-proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0) {.async.} =
+proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false) {.async.} =
 ```
 
 Publish a message
@@ -139,7 +158,7 @@ ____
 ## subscribe*
 
 ```nim
-proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback) {.async.} =
+proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback): Future[void] =
 ```
 
 Subscribe to a topic
@@ -147,3 +166,46 @@ Subscribe to a topic
 
 ____
 
+
+## unsubscribe*
+
+```nim
+proc unsubscribe*(ctx: MqttCtx, topic: string): Future[void] =
+```
+
+Unubscribe from a topic.
+
+Access the callback with:
+```nim
+proc callbackName(topic: string, message: string) =
+  echo "Topic: ", topic, ": ", message
+```
+
+____
+
+## isConnected*
+
+```nim
+proc isConnected*(ctx: MqttCtx): bool =
+```
+
+Returns true, if the client is connected to the broker.
+
+
+____
+
+## msgQueue*
+
+```nim
+proc msgQueue*(ctx: MqttCtx): int =
+```
+
+Returns the number of unfinished packages, which still are in the work queue.
+This includes all publish and subscribe packages, which has not been fully
+send, acknowledged or completed.
+
+You can use this to ensure, that all your of messages are sent, before
+exiting your program.
+
+
+____

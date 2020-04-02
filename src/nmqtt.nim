@@ -4,27 +4,8 @@
 ## Examples
 ## --------
 ##
-## All in one
-## .. code-block::plain
-##    import nmqtt, asyncdispatch
-##
-##    let ctx = newMqttCtx("hallo")
-##
-##    ctx.set_host("test.mosquitto.org", 1883)
-##    #ctx.set_auth("username", "password")
-##
-##    await ctx.start()
-##    proc on_data(topic: string, message: string) =
-##      echo "got ", topic, ": ", message
-##
-##    await ctx.subscribe("#", 2, on_data)
-##    await ctx.publish("test1", "hallo", 2)
-##
-##    asyncCheck flop()
-##    runForever()
-##
-## Individual
-## .. code-block::plain
+## ### Subscribe to topic
+## .. code-block::nim
 ##    import nmqtt, asyncdispatch
 ##
 ##    let ctx = newMqttCtx("hallo")
@@ -37,25 +18,43 @@
 ##      proc on_data(topic: string, message: string) =
 ##        echo "got ", topic, ": ", message
 ##
-##      await ctx.subscribe("#", 2, on_data)
+##      await ctx.subscribe("nmqtt", 2, on_data)
 ##
+##    asyncCheck mqttSub
+##    runForever()
+##
+##
+## ### Publish msg
+## .. code-block::nim
 ##    proc mqttPub() {.async.} =
 ##      await ctx.start()
-##      await ctx.publish("test1", "hallo", 2, waitConfirmation=true)
+##      await ctx.publish("nmqtt", "hallo", 2)
 ##      await ctx.disconnect()
 ##
-##    proc mqttPubSleep() {.async.} =
+##    waitFor mqttPub()
+##
+## ### Subscribe and publish
+## .. code-block::nim
+##    proc mqttSubPub() {.async.} =
 ##      await ctx.start()
-##      await ctx.publish("test1", "hallo", 2)
-##      await sleepAsync 5000
+##
+##      # Callback when receiving on the topic
+##      proc on_data(topic: string, message: string) =
+##        echo "got ", topic, ": ", message
+##
+##      # Subscribe to topic the topic `nmqtt`
+##      await ctx.subscribe("nmqtt", 2, on_data)
+##      await sleepAsync 500
+##
+##      # Publish a message to the topic `nmqtt`
+##      await ctx.publish("nmqtt", "hallo", 2)
+##      await sleepAsync 500
+##
+##      # Disconnect
 ##      await ctx.disconnect()
 ##
-##    #asyncCheck mqttSub
-##    #runForever()
-##    # OR
-##    #waitFor mqttPub()
-##    # OR
-##    #waitFor mqttPubSleep()
+##    waitFor mqttSubPub()
+##
 
 #{.experimental: "codeReordering".}
 
@@ -79,7 +78,7 @@ type
     ssl: SslContext
     msgIdSeq: MsgId
     workQueue: Table[MsgId, Work]
-    pubCallbacks: seq[PubCallback]
+    pubCallbacks: Table[string, PubCallback]
     inWork: bool
     pingTxInterval: int # ms
 
@@ -131,13 +130,16 @@ type
   WorkState = enum
     WorkNew, WorkSent, WorkAcked
 
-  PubCallback = proc(topic: string, message: string)
+  PubCallback = object
+    cb: proc(topic: string, message: string)
+    qos: int
 
   Work = ref object
     state: WorkState
     msgId: MsgId
     topic: string
     qos: Qos
+    typ: PktType
     case wk: WorkKind
     of PubWork:
       retain: bool
@@ -199,6 +201,9 @@ proc newPkt(typ: PktType=NOTYPE, flags: uint8=0): Pkt =
 proc dmp(ctx: MqttCtx, s: string) =
   when defined(dev):
     stderr.write "\e[1;30m" & s & "\e[0m\n"
+  when defined(test):
+    let s = split(s, " ")
+    testDmp.add(@[$(s[0] & " " & s[1]), $join(s[2..s.len-1], " ")])
 
 proc dbg(ctx: MqttCtx, s: string) =
   stderr.write "\e[37m" & s & "\e[0m\n"
@@ -335,8 +340,19 @@ proc sendSubscribe(ctx: MqttCtx, msgId: MsgId, topic: string, qos: Qos): Future[
   pkt.put qos.uint8
   result = ctx.send(pkt)
 
+proc sendUnsubscribe(ctx: MqttCtx, msgId: MsgId, topic: string): Future[bool] =
+  var pkt = newPkt(Unsubscribe, 0b0010)
+  pkt.put msgId.uint16
+  pkt.put topic, true
+  result = ctx.send(pkt)
+
 proc sendPubAck(ctx: MqttCtx, msgId: MsgId): Future[bool] =
   var pkt = newPkt(PubAck, 0b0010)
+  pkt.put msgId.uint16
+  result = ctx.send(pkt)
+
+proc sendPubRec(ctx: MqttCtx, msgId: MsgId): Future[bool] =
+  var pkt = newPkt(PubRec, 0b0010)
   pkt.put msgId.uint16
   result = ctx.send(pkt)
 
@@ -345,16 +361,40 @@ proc sendPubRel(ctx: MqttCtx, msgId: MsgId): Future[bool] =
   pkt.put msgId.uint16
   result = ctx.send(pkt)
 
-proc sendWork(ctx: MqttCtx, work: Work): Future[bool] =
-  case work.wk
-  of PubWork:
-    result = ctx.sendPublish(work.msgId, work.topic, work.message, work.qos, work.retain)
-  of SubWork:
-    result = ctx.sendSubscribe(work.msgId, work.topic, work.qos)
+proc sendPubComp(ctx: MqttCtx, msgId: MsgId): Future[bool] =
+  var pkt = newPkt(PubComp, 0b0010)
+  pkt.put msgId.uint16
+  result = ctx.send(pkt)
 
 proc sendPingReq(ctx: MqttCtx): Future[bool] =
   var pkt = newPkt(Pingreq)
   result = ctx.send(pkt)
+
+proc sendWork(ctx: MqttCtx, work: Work): Future[bool] =
+  case work.typ
+  of Publish:   # Publish
+    result = ctx.sendPublish(work.msgId, work.topic, work.message, work.qos, work.retain)
+
+  of PubRel:    # Publish qos=2 (activated from a PubRec)
+    result = ctx.sendPubRel(work.msgId)
+
+  of PubAck:    # Subscribe qos=1 (activated from a Publish)
+    result = ctx.sendPubAck(work.msgId)
+
+  of PubRec:    # Subscribe qos=2 (1/2) (activated from a Publish)
+    result = ctx.sendPubRec(work.msgId)
+
+  of PubComp:   # Subscribe qos=2 (2/2) (activated from a PubRel)
+    result = ctx.sendPubComp(work.msgId)
+
+  of Subscribe:
+    result = ctx.sendSubscribe(work.msgId, work.topic, work.qos)
+
+  of Unsubscribe:
+    result = ctx.sendUnsubscribe(work.msgId, work.topic)
+
+  else:
+    ctx.wrn("Error sending unknown package: " & $work.typ)
 
 proc work(ctx: MqttCtx) {.async.} =
   if ctx.inWork:
@@ -363,14 +403,28 @@ proc work(ctx: MqttCtx) {.async.} =
   if ctx.state == Connected:
     var delWork: seq[MsgId]
     for msgId, work in ctx.workQueue:
-      # New messages in queue
-      if work.state == WorkNew:
-        let ok = await ctx.sendWork(work)
-        if ok:
-          if work.wk == PubWork and work.qos == 0:
-            delWork.add msgId
-          else:
+
+      if work.wk == PubWork and work.state == WorkNew:
+        if work.typ == Publish and work.qos == 0:
+          if await ctx.sendWork(work): delWork.add msgId
+
+        elif work.typ == PubAck and work.qos == 1:
+          if await ctx.sendWork(work): delWork.add msgId
+
+        elif work.typ == PubComp and work.qos == 2:
+          if await ctx.sendWork(work): delWork.add msgId
+
+        else:
+          if await ctx.sendWork(work): work.state = WorkSent
+
+      elif work.wk == SubWork and work.state == WorkNew:
+        if work.typ == Subscribe:
+          if await ctx.sendWork(work): work.state = WorkSent
+
+        elif work.typ == Unsubscribe:
+          if await ctx.sendWork(work):
             work.state = WorkSent
+            ctx.pubCallbacks.del work.topic
 
     for msgId in delWork:
       ctx.workQueue.del msgId
@@ -395,21 +449,22 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
   if qos == 1 or qos == 2:
     (msgid, offset) = pkt.getu16(offset)
   (message, offset) = pkt.getstring(offset, false)
-  for cb in ctx.pubCallbacks:
-    cb(topic, message)
+  for top, cb in ctx.pubCallbacks:
+    if top == topic or top == "#": cb.cb(topic, message)
   if qos == 1:
-    let ok = await ctx.sendPubAck(msgid)
-  if qos == 2:
-    let ok = await ctx.sendPubRel(msgid)
-
+    ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 1, typ: PubAck)
+    await ctx.work()
+  elif qos == 2:
+    ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 2, typ: PubRec)
+    await ctx.work()
 
 proc onPubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
-  if msgId in ctx.workQueue:
-    assert ctx.workQueue[msgId].wk == PubWork
-    assert ctx.workQueue[msgId].state == WorkSent
-    assert ctx.workQueue[msgId].qos == 1
-    ctx.workQueue.del msgId
+  assert msgId in ctx.workQueue
+  assert ctx.workQueue[msgId].wk == PubWork
+  assert ctx.workQueue[msgId].state == WorkSent
+  assert ctx.workQueue[msgId].qos == 1
+  ctx.workQueue.del msgId
 
 proc onPubRec(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
@@ -417,21 +472,38 @@ proc onPubRec(ctx: MqttCtx, pkt: Pkt) {.async.} =
   assert ctx.workQueue[msgId].wk == PubWork
   assert ctx.workQueue[msgId].state == WorkSent
   assert ctx.workQueue[msgId].qos == 2
-  var pkt = newPkt(PubRel, 0b0010)
-  pkt.put(msgId)
-  if await ctx.send(pkt):
-    discard
+  ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 2, typ: PubRel)
+  await ctx.work()
+
+proc onPubRel(ctx: MqttCtx, pkt: Pkt) {.async.} =
+  let (msgId, _) = pkt.getu16(0)
+  assert msgId in ctx.workQueue
+  assert ctx.workQueue[msgId].wk == PubWork
+  assert ctx.workQueue[msgId].state == WorkSent
+  assert ctx.workQueue[msgId].qos == 2
+  ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 2, typ: PubComp)
+  await ctx.work()
 
 proc onPubComp(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
-  if msgId in ctx.workQueue:
-    ctx.workQueue[msgId].state = WorkAcked
-    ctx.workQueue.del msgId
+  assert msgId in ctx.workQueue
+  assert ctx.workQueue[msgId].wk == PubWork
+  assert ctx.workQueue[msgId].state == WorkSent
+  assert ctx.workQueue[msgId].qos == 2
+  ctx.workQueue.del msgId
 
 proc onSubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
   assert msgId in ctx.workQueue
   assert ctx.workQueue[msgId].wk == SubWork
+  assert ctx.workQueue[msgId].state == WorkSent
+  ctx.workQueue.del msgId
+
+proc onUnsubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
+  let (msgId, _) = pkt.getu16(0)
+  assert msgId in ctx.workQueue
+  assert ctx.workQueue[msgId].wk == SubWork
+  assert ctx.workQueue[msgId].state == WorkSent
   ctx.workQueue.del msgId
 
 proc onPingResp(ctx: MqttCtx, pkt: Pkt) {.async.} =
@@ -443,8 +515,10 @@ proc handle(ctx: MqttCtx, pkt: Pkt) {.async.} =
     of Publish: await ctx.onPublish(pkt)
     of PubAck: await ctx.onPubAck(pkt)
     of PubRec: await ctx.onPubRec(pkt)
+    of PubRel: await ctx.onPubRel(pkt)
     of PubComp: await ctx.onPubComp(pkt)
     of SubAck: await ctx.onSubAck(pkt)
+    of UnsubAck: await ctx.onUnsubAck(pkt)
     of PingResp: await ctx.onPingResp(pkt)
     else: ctx.wrn "Unond pkt type " & $pkt.typ
 
@@ -471,30 +545,50 @@ proc runPing(ctx: MqttCtx) {.async.} =
       break
     await ctx.work()
 
+proc connectBroker(ctx: MqttCtx) {.async.} =
+  ## Connect to the broker
+  if ctx.pingTxInterval == 0:
+    ctx.pingTxInterval = 60 * 1000
+
+  ctx.dbg "connecting to " & ctx.host & ":" & $ctx.port
+  try:
+    ctx.s = await asyncnet.dial(ctx.host, ctx.port)
+    if ctx.doSsl:
+      when defined(ssl):
+        ctx.ssl = newContext(protSSLv23, CVerifyNone)
+        wrapConnectedSocket(ctx.ssl, ctx.s, handshakeAsClient)
+      else:
+        ctx.wrn "requested SSL session but ssl is not enabled"
+        await ctx.close("SSL not enabled")
+        ctx.state = Error
+    let ok = await ctx.sendConnect()
+    if ok:
+      asyncCheck ctx.runRx()
+      asyncCheck ctx.runPing()
+  except OSError as e:
+    ctx.dbg "Error connecting to " & ctx.host & " " & e.msg
+    ctx.state = Error
+
 proc runConnect(ctx: MqttCtx) {.async.} =
+  ## Auto-connect and reconnect to broker
+  await ctx.connectBroker()
+
   while true:
     if ctx.state == Disabled:
       break
-    elif ctx.state == Disconnected:
-      ctx.dbg "connecting to " & ctx.host & ":" & $ctx.port
-      try:
-        ctx.s = await asyncnet.dial(ctx.host, ctx.port)
-        if ctx.doSsl:
-          when defined(ssl):
-            ctx.ssl = newContext(protSSLv23, CVerifyNone)
-            wrapConnectedSocket(ctx.ssl, ctx.s, handshakeAsClient)
-          else:
-            ctx.wrn "requested SSL session but ssl is not enabled"
-            await ctx.close("SSL not enabled")
-            ctx.state = Error
-        let ok = await ctx.sendConnect()
-        if ok:
-          asyncCheck ctx.runRx()
-          asyncCheck ctx.runPing()
-      except OSError as e:
-        ctx.dbg "Error connecting to " & ctx.host & " " & e.msg
-        ctx.state = Error
-
+    elif ctx.state in [Disconnected, Error]:
+      await ctx.connectBroker()
+      # If the client has been disconnect, it is necessary to tell the broker,
+      # that we still want to be Subscribed. PubCallbacks still holds the
+      # callbacks, but we need to re-Subscribe to the broker.
+      #
+      # If we Publish during the Disconnected, the msg will not be send, cause
+      # work() checks that `state=Connected`. Therefor our re-Subscribe
+      # will be inserted first in the queue.
+      if ctx.workQueue.len() == 0:
+        for topic, cb in ctx.pubCallbacks:
+          let msgId = ctx.nextMsgId()
+          ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, qos: cb.qos, typ: Subscribe)
     await sleepAsync 1000
 
 #
@@ -503,78 +597,75 @@ proc runConnect(ctx: MqttCtx) {.async.} =
 
 proc newMqttCtx*(clientId: string): MqttCtx =
   ## Initiate a new MQTT client
-
   MqttCtx(clientId: clientId)
 
 proc set_ping_interval*(ctx: MqttCtx, txInterval: int = 60) =
   ## Set the clients ping interval in seconds. Default is 60 seconds.
-
   if txInterval > 0 and txInterval < 65535:
     ctx.pingTxInterval = txInterval * 1000
 
 proc set_host*(ctx: MqttCtx, host: string, port: int=1883, doSsl=false) =
   ## Set the MQTT host
-
   ctx.host = host
   ctx.port = Port(port)
   ctx.doSsl = doSsl
 
 proc set_auth*(ctx: MqttCtx, username: string, password: string) =
   ## Set the authentication for the host.
-
   ctx.username = username
   ctx.password = password
 
-proc start*(ctx: MqttCtx) {.async.} =
+proc connect*(ctx: MqttCtx) {.async.} =
   ## Connect to the broker.
+  await ctx.connectBroker()
 
-  if ctx.pingTxInterval == 0:
-    ctx.set_ping_interval()
+proc start*(ctx: MqttCtx) {.async.} =
+  ## Auto-connect and reconnect to the broker. The client will try to
+  ## reconnect when the state is `Disconnected` or `Error`. The `Error`-state
+  ## happens, when the broker is down, but the client will try to reconnect
+  ## until the broker is up again.
   ctx.state = Disconnected
   asyncCheck ctx.runConnect()
-  while ctx.state != Connected and ctx.state != Error:
-    await sleepAsync 1000
 
 proc disconnect*(ctx: MqttCtx) {.async.} =
   ## Disconnect from the broker.
-
   await ctx.close("User request")
   ctx.state = Disabled
 
-proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false, waitConfirmation = false) {.async.} =
+proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false) {.async.} =
   ## Publish a message
-
   let msgId = ctx.nextMsgId()
-  ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qos, message: message, retain: retain)
+  ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qos, message: message, retain: retain, typ: Publish)
   await ctx.work()
-  if waitConfirmation:
-    while ctx.workQueue.len > 0 and hasKey(ctx.workQueue, msgId):
-      await sleepAsync 1000
 
-proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback): Future[void] =
+proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback.cb): Future[void] =
   ## Subscribe to a topic.
-
+  ##
+  ## Access the callback with:
+  ## .. code-block::nim
+  ##    proc callbackName(topic: string, message: string) =
+  ##      echo "Topic: ", topic, ": ", message
   let msgId = ctx.nextMsgId()
-  ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, qos: qos)
-  ctx.pubCallbacks.add callback
+  ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, qos: qos, typ: Subscribe)
+  ctx.pubCallbacks[topic] = PubCallback(cb: callback, qos: qos)
   result = ctx.work()
 
-when isMainModule:
-  when not defined(test):
-    proc flop() {.async.} =
-      let ctx = newMqttCtx("hallo")
+proc unsubscribe*(ctx: MqttCtx, topic: string): Future[void] =
+  ## Unsubscribe to a topic.
+  let msgId = ctx.nextMsgId()
+  ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, typ: Unsubscribe)
+  result = ctx.work()
 
-      #ctx.set_host("test.mosquitto.org", 1883)
-      ctx.set_host("test.mosquitto.org", 8883, true)
-      ctx.set_ping_interval(10)
+proc isConnected*(ctx: MqttCtx): bool =
+  ## Returns true, if the client is connected to the broker.
+  if ctx.state == Connected:
+    result = true
 
-      await ctx.start()
-      proc on_data(topic: string, message: string) =
-        echo "got ", topic, ": ", message
-
-      await ctx.subscribe("#", 2, on_data)
-      await ctx.publish("test1", "hallo", 2)
-      await sleepAsync 10000
-      await ctx.disconnect()
-
-    waitFor flop()
+proc msgQueue*(ctx: MqttCtx): int =
+  ## Returns the number of unfinished packages, which still are in the work queue.
+  ## This includes all publish and subscribe packages, which has not been fully
+  ## send, acknowledged or completed.
+  ##
+  ## You can use this to ensure, that all your of messages are sent, before
+  ## exiting your program.
+  result = ctx.workQueue.len()

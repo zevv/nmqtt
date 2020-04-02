@@ -1,6 +1,10 @@
-# Copyright 2020 - Thomas T. Jarløv
-
 import asyncdispatch, unittest, oids, random
+
+var testDmp: seq[seq[string]]
+
+when not defined(test):
+  echo "Please run with -d:test, exiting"
+  quit()
 
 include ../src/nmqtt
 
@@ -12,6 +16,7 @@ randomize()
 let ctxMain = newMqttCtx("nmqttTestMain")
 #ctxMain.set_host("test.mosquitto.org", 1883)
 ctxMain.set_host("127.0.0.1", 1883)
+ctxMain.set_ping_interval(120)
 waitFor ctxMain.start()
 
 # Test clíent slave:
@@ -20,6 +25,15 @@ waitFor ctxMain.start()
 let ctxSlave = newMqttCtx("nmqttTestSlave")
 #ctxSlave.set_host("test.mosquitto.org", 1883)
 ctxSlave.set_host("127.0.0.1", 1883)
+
+# Test clíent listen:
+# ctxListen is a client which only should be used to make subscribe
+# callbacks. Do not close it.
+let ctxListen = newMqttCtx("nmqttTestListen")
+#ctxSlave.set_host("test.mosquitto.org", 1883)
+ctxListen.set_host("127.0.0.1", 1883)
+ctxMain.set_ping_interval(120)
+waitFor ctxListen.start()
 
 proc tout(t, m, s: string) =
   ## Print test data during test.
@@ -30,11 +44,19 @@ proc tdata(t: string): (string, string) =
   let topicTest = $genOid()
   let msg = $rand(99999999)
   tout(topicTest, msg, t)
+  testDmp = @[]
   return (topicTest, msg)
+
+waitFor sleepAsync(1500) # Let the clients connect
 
 include "connection.nim"
 include "subscribe.nim"
+include "unsubscribe.nim"
+include "publish.nim"
 include "publish_retained.nim"
 include "publish_qos.nim"
+include "ping.nim"
+include "utils.nim"
 
 waitFor ctxMain.disconnect()
+waitFor ctxListen.disconnect()
