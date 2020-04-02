@@ -65,10 +65,16 @@ waitFor mqttSubPub()
 
 ## `subscribe()` & `unsubscribe()`
 
-It is currently not possible to fire 2 `subscribe()` or 2 `unsubscribe()`
-immediately after each other. This will cause a:
+We currently need to copy the `workQueue` before looping through it to avoid
+an assert. Investigate performance impact.
 ```
+# To avoid:
 len(t) == L the length of the table changed while iterating over it
+# we need to:
+let workQueue = ctx.workQueue
+for msgId, work in workQueue:
+# instead of:
+for msgId, work in ctx.workQueue:
 ```
 
 

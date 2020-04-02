@@ -106,8 +106,6 @@ suite "test suite for subscribe":
       await ctxMain.publish(tpc & "-2", msg & "-mul2", 0)
       await sleepAsync 500
       await ctxListen.unsubscribe(tpc & "-1")
-      # TODO: This failes without the sleepAsync due to `len(t) == L` the length of the table changed while iterating over it
-      await sleepAsync 500
       await ctxListen.unsubscribe(tpc & "-2")
       await sleepAsync 500
       check(topic1 == true)
@@ -148,8 +146,6 @@ suite "test suite for subscribe":
 
       await ctxListen.subscribe(tpc, 0, on_data_sub_mul2)
 
-      # TODO: This failes without the sleepAsync due to `len(t) == L` the length of the table changed while iterating over it
-      await sleepAsync 500
       # sub3 now overrides sub1 and sub2
       await ctxListen.subscribe(tpc, 0, on_data_sub_mul3)
 

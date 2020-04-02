@@ -402,7 +402,10 @@ proc work(ctx: MqttCtx) {.async.} =
   ctx.inWork = true
   if ctx.state == Connected:
     var delWork: seq[MsgId]
-    for msgId, work in ctx.workQueue:
+    let workQueue = ctx.workQueue # TODO: We need to copy the workQueue, otherwise
+                                  # we can hit: `the length of the table changed
+                                  # while iterating over it`
+    for msgId, work in workQueue:
 
       if work.wk == PubWork and work.state == WorkNew:
         if work.typ == Publish and work.qos == 0:
