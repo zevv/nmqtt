@@ -13,15 +13,21 @@ proc handler() {.noconv.} =
   quit(0)
 
 
-proc nmqttSub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", username="", password="", topic: string, qos=0, willtopic="", willmsg="", willqos=0, willretain=false, verbose=false) {.async.} =
+proc nmqttSub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", username="", password="", topic: string, qos=0, keepalive=60, willtopic="", willmsg="", willqos=0, willretain=false, verbose=false) {.async.} =
   ## CLI tool for subscribe
   if clientid != "":
     ctx.clientId = clientid
-  ctx.set_host(host, port, ssl)
+
+  if port == 8883:
+    ctx.set_host(host, port, true)
+  else:
+    ctx.set_host(host, port, ssl)
+
+  ctx.set_ping_interval(keepalive)
 
   if willretain and (willtopic == "" or willmsg == ""):
     echo "Error: Will-retain giving, but no topic given"
-    quit()
+    quit(0)
   elif willtopic != "" and willmsg != "":
     ctx.set_will(willtopic, willmsg, willqos, willretain)
 
@@ -53,14 +59,15 @@ $options
           doc="Subscribe to a topic on a MQTT-broker.",
           cmdName="nmqtt_sub",
           help={
-            "host":     "IP-address of the broker.",
-            "port":     "network port to connect too.",
+            "host":     "IP-address of the broker. Defaults to 127.0.0.1",
+            "port":     "network port to connect too. Defaults to 1883.",
             "ssl":      "enable ssl. Auto-enabled on port 8883.",
             "clientid": "your connection ID. Defaults to nmqtt_pub_ appended with processID.",
             "username": "provide a username",
             "password": "provide a password",
             "topic":    "MQTT topic to publish to.",
-            "qos":      "quality of service level to use for all messages.",
+            "qos":      "quality of service level to use for all messages. Defaults to 0.",
+            "keepalive":"keep alive in seconds for this client. Defaults to 60.",
             "willtopic":"set the will's topic",
             "willmsg":  "set the will's message",
             "willqos":  "set the will's quality of service",
