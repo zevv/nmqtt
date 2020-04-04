@@ -4,10 +4,16 @@ from os import getCurrentProcessId
 include "nmqtt.nim"
 
 
-proc nmqttSub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", username="", password="", topic: string, qos=0, verbose=false) {.async.} =
+proc nmqttSub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", username="", password="", topic: string, qos=0, willtopic="", willmsg="", willqos=0, willretain=false, verbose=false) {.async.} =
   ## CLI tool for subscribe
   let ctx = newMqttCtx(if clientid != "": clientid else: "nmqtt_sub_" & $getCurrentProcessId())
   ctx.set_host(host, port, ssl)
+
+  if willretain and (willtopic == "" or willmsg == ""):
+    echo "Error: Will-retain giving, but no topic given"
+    quit()
+  elif willtopic != "" and willmsg != "":
+    ctx.set_will(willtopic, willmsg, willqos, willretain)
 
   await ctx.start()
 
@@ -29,7 +35,8 @@ Usage:
 OPTIONS
 $options
 """
-  clCfg.hTabCols = @[clOptKeys, clDflVal, clDescrip]
+  #clCfg.hTabCols = @[clOptKeys, clDflVal, clDescrip]
+  clCfg.hTabCols = @[clOptKeys, clDescrip]
   dispatch(nmqttSub,
           doc="Subscribe to a topic on a MQTT-broker.",
           cmdName="nmqtt_sub",
@@ -42,11 +49,19 @@ $options
             "password": "provide a password",
             "topic":    "MQTT topic to publish to.",
             "qos":      "quality of service level to use for all messages.",
+            "willtopic":"set the will's topic",
+            "willmsg":  "set the will's message",
+            "willqos":  "set the will's quality of service",
+            "willretain":"set to retain the will message"
           },
           short={
             "password": 'P',
             "help": '?',
-            "ssl": '\0'
+            "ssl": '\0',
+            "willtopic": '\0',
+            "willmsg": '\0',
+            "willqos": '\0',
+            "willretain": '\0'
           },
           usage=topLvlUse
           )

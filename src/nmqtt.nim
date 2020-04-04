@@ -81,6 +81,11 @@ type
     pubCallbacks: Table[string, PubCallback]
     inWork: bool
     pingTxInterval: int # ms
+    willFlag: bool
+    willQoS: int
+    willRetain: bool
+    willTopic: string
+    willMsg: string
 
   State = enum
     Disabled, Disconnected, Connecting, Connected, Disconnecting, Error
@@ -301,6 +306,14 @@ proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
 proc sendConnect(ctx: MqttCtx): Future[bool] =
   var flags: uint8
   flags = flags or CleanSession.uint8
+  if ctx.willFlag:
+    flags = flags or WillFlag.uint8
+    if ctx.willQoS == 1:
+      flags = flags or WillQoS1.uint8
+    elif ctx.willQoS == 2:
+      flags = flags or WillQoS2.uint8
+    if ctx.willRetain:
+      flags = flags or WillRetain.uint8
   if ctx.username != "":
     flags = flags or UserNameFlag.uint8
   if ctx.password != "":
@@ -311,6 +324,11 @@ proc sendConnect(ctx: MqttCtx): Future[bool] =
   pkt.put flags
   pkt.put 60.uint16
   pkt.put ctx.clientId, true
+  if ctx.willFlag:
+    pkt.put (ctx.willTopic.len).uint16
+    pkt.put ctx.willTopic, false
+    pkt.put (ctx.willMsg.len).uint16
+    pkt.put ctx.willMsg, false
   if ctx.username != "":
     pkt.put ctx.username, true
   if ctx.password != "":
@@ -617,6 +635,14 @@ proc set_auth*(ctx: MqttCtx, username: string, password: string) =
   ## Set the authentication for the host.
   ctx.username = username
   ctx.password = password
+
+proc set_will*(ctx: MqttCtx, topic, msg: string, qos=0, retain=false) =
+  ## Set the clients will.
+  ctx.willFlag   = true
+  ctx.willTopic  = topic
+  ctx.willMsg    = msg
+  ctx.willQoS    = qos
+  ctx.willRetain = retain
 
 proc connect*(ctx: MqttCtx) {.async.} =
   ## Connect to the broker.

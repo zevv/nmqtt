@@ -16,15 +16,16 @@ randomize()
 let ctxMain = newMqttCtx("nmqttTestMain")
 #ctxMain.set_host("test.mosquitto.org", 1883)
 ctxMain.set_host("127.0.0.1", 1883)
-ctxMain.set_ping_interval(120)
+ctxMain.set_ping_interval(1200)
 waitFor ctxMain.start()
 
 # Test clíent slave:
-# ctxSlave is a client which may be closed and open. I should be closed
+# ctxSlave is a client which may be closed and open. It should be closed
 # after each test.
 let ctxSlave = newMqttCtx("nmqttTestSlave")
 #ctxSlave.set_host("test.mosquitto.org", 1883)
 ctxSlave.set_host("127.0.0.1", 1883)
+ctxSlave.set_ping_interval(1200)
 
 # Test clíent listen:
 # ctxListen is a client which only should be used to make subscribe
@@ -32,7 +33,7 @@ ctxSlave.set_host("127.0.0.1", 1883)
 let ctxListen = newMqttCtx("nmqttTestListen")
 #ctxSlave.set_host("test.mosquitto.org", 1883)
 ctxListen.set_host("127.0.0.1", 1883)
-ctxMain.set_ping_interval(120)
+ctxMain.set_ping_interval(1200)
 waitFor ctxListen.start()
 
 proc tout(t, m, s: string) =
@@ -56,9 +57,13 @@ include "publish.nim"
 include "publish_qos.nim"
 include "ping.nim"
 include "utils.nim"
-include "publish_retained.nim" # Retained msg needs to be last test, since it
-                               # will store msg's, which will be caught be subs
-                               # on `#`.
+include "willmsg.nim"          # Contains retained msgs
+include "publish_retained.nim" # Contains retained msgs
+                               #
+                               # When the test contains retained msgs,
+                               # it needs to be the last test, since it
+                               # will store msg's, which will be caught
+                               # in the subscribe test on `#`.
 
 waitFor ctxMain.disconnect()
 waitFor ctxListen.disconnect()
