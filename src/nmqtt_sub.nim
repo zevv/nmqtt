@@ -23,25 +23,31 @@ proc nmqttSub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", use
   else:
     ctx.set_host(host, port, ssl)
 
+  # Set the ping interval/keep alive
   ctx.set_ping_interval(keepalive)
 
+  # Set the will message
   if willretain and (willtopic == "" or willmsg == ""):
     echo "Error: Will-retain giving, but no topic given"
     quit(0)
   elif willtopic != "" and willmsg != "":
     ctx.set_will(willtopic, willmsg, willqos, willretain)
 
+  # Connec to broker
   await ctx.start()
 
   # Remove retained messages
   if removeretained:
     waitFor ctx.publish(topic, "", 0, true)
 
+  # Callback for subscribe
   proc on_data(topic, msg: string) =
     echo topic, ": ", msg
 
+  # Subscribe to topic
   await ctx.subscribe(topic, qos, on_data)
 
+  # Control CTRL+c hook
   setControlCHook(handler)
 
   runForever()
