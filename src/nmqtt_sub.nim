@@ -4,9 +4,19 @@ from os import getCurrentProcessId
 include "nmqtt.nim"
 
 
+let ctx = newMqttCtx("nmqtt_sub_" & $getCurrentProcessId())
+
+
+proc handler() {.noconv.} =
+  ## Catch ctrl+c from user
+  waitFor ctx.disconnect()
+  quit(0)
+
+
 proc nmqttSub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", username="", password="", topic: string, qos=0, willtopic="", willmsg="", willqos=0, willretain=false, verbose=false) {.async.} =
   ## CLI tool for subscribe
-  let ctx = newMqttCtx(if clientid != "": clientid else: "nmqtt_sub_" & $getCurrentProcessId())
+  if clientid != "":
+    ctx.clientId = clientid
   ctx.set_host(host, port, ssl)
 
   if willretain and (willtopic == "" or willmsg == ""):
@@ -21,6 +31,8 @@ proc nmqttSub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", use
     echo topic, ": ", msg
 
   await ctx.subscribe(topic, qos, on_data)
+
+  setControlCHook(handler)
 
   runForever()
 
