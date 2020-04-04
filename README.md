@@ -254,7 +254,27 @@ ____
 proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false) {.async.} =
 ```
 
-Publish a message
+Publish a message.
+
+**Required:**
+  - topic: string
+  - message: string
+
+**Optional:**
+  - qos: int     = 1, 2 or 3
+  - retain: bool = true or false
+
+**Publish message:**
+```nim
+ctx.publish(topic = "nmqtt", message = "Hey there", qos = 0, retain = true)
+```
+
+**Remove retained message on topic:**
+
+Set the `message` to _null_.
+```nim
+ctx.publish(topic = "nmqtt", message = "", qos = 0, retain = true)
+```
 
 
 ____

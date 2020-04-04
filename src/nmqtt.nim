@@ -461,7 +461,11 @@ proc onConnAck(ctx: MqttCtx, pkt: Pkt): Future[void] =
   result = ctx.work()
 
 proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
-  let qos = (pkt.flags shr 1) and 0x03
+  let
+    qos = (pkt.flags shr 1) and 0x03
+    retain = pkt.flags and 0x01 # When subscribing and first message is a
+                                # retained message, this will be `1`
+                                # otherwise `0`.
   var
     offset: int
     msgid: MsgId
@@ -662,7 +666,28 @@ proc disconnect*(ctx: MqttCtx) {.async.} =
   ctx.state = Disabled
 
 proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false) {.async.} =
-  ## Publish a message
+  ## Publish a message.
+  ##
+  ## **Required:**
+  ##  - topic: string
+  ##  - message: string
+  ##
+  ## **Optional:**
+  ##  - qos: int     = 1, 2 or 3
+  ##  - retain: bool = true or false
+  ##
+  ##
+  ## **Publish message:**
+  ## .. code-block::nim
+  ##    ctx.publish(topic = "nmqtt", message = "Hey there", qos = 0, retain = true)
+  ##
+  ##
+  ## **Remove retained message on topic:**
+  ##
+  ## Set the `message` to _null_.
+  ## .. code-block::nim
+  ##    ctx.publish(topic = "nmqtt", message = "", qos = 0, retain = true)
+  ##
   let msgId = ctx.nextMsgId()
   ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qos, message: message, retain: retain, typ: Publish)
   await ctx.work()
