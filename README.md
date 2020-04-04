@@ -40,19 +40,23 @@ Usage:
   nmqtt_pub [-h host -p port -u username -P password] -t {topic} -m {message}
 
 OPTIONS
-  -?, --help                     print this cligen-erated help
-  --help-syntax                  advanced: prepend,plurals,..
-  -h=, --host=      "127.0.0.1"  IP-address of the broker.
-  -p=, --port=      1883         network port to connect too.
-  --ssl             false        enable ssl. Auto-enabled on port 8883.
-  -c=, --clientid=  ""           your connection ID. Defaults to nmqtt_pub_ appended with processID.
-  -u=, --username=  ""           provide a username
-  -P=, --password=  ""           provide a password
-  -t=, --topic=     REQUIRED     MQTT topic to publish to.
-  -m=, --msg=       REQUIRED     set msg
-  -q=, --qos=       0            quality of service level to use for all messages.
-  -r, --retain      false        retain messages on the broker.
-  -v, --verbose     false        set verbose
+  -?, --help        print this cligen-erated help
+  --help-syntax     advanced: prepend,plurals,..
+  -h=, --host=      IP-address of the broker.
+  -p=, --port=      network port to connect too.
+  --ssl             enable ssl. Auto-enabled on port 8883.
+  -c=, --clientid=  your connection ID. Defaults to nmqtt_pub_ appended with processID.
+  -u=, --username=  provide a username
+  -P=, --password=  provide a password
+  -t=, --topic=     MQTT topic to publish to.
+  -m=, --msg=       set msg
+  -q=, --qos=       quality of service level to use for all messages.
+  -r, --retain      retain messages on the broker.
+  --willtopic=      set the will's topic
+  --willmsg=        set the will's message
+  --willqos=        set the will's quality of service
+  --willretain      set to retain the will message
+  -v, --verbose     set verbose
 ```
 
 _`-verbose` not implemented yet_
@@ -68,17 +72,21 @@ Usage:
   nmqtt_sub [-h host -p port -u username -P password] -t {topic}
 
 OPTIONS
-  -?, --help                     print this cligen-erated help
-  --help-syntax                  advanced: prepend,plurals,..
-  -h=, --host=      "127.0.0.1"  IP-address of the broker.
-  -p=, --port=      1883         network port to connect too.
-  --ssl             false        enable ssl. Auto-enabled on port 8883.
-  -c=, --clientid=  ""           your connection ID. Defaults to nmqtt_pub_ appended with processID.
-  -u=, --username=  ""           provide a username
-  -P=, --password=  ""           provide a password
-  -t=, --topic=     REQUIRED     MQTT topic to publish to.
-  -q=, --qos=       0            quality of service level to use for all messages.
-  -v, --verbose     false        set verbose
+  -?, --help        print this cligen-erated help
+  --help-syntax     advanced: prepend,plurals,..
+  -h=, --host=      IP-address of the broker.
+  -p=, --port=      network port to connect too.
+  --ssl             enable ssl. Auto-enabled on port 8883.
+  -c=, --clientid=  your connection ID. Defaults to nmqtt_pub_ appended with processID.
+  -u=, --username=  provide a username
+  -P=, --password=  provide a password
+  -t=, --topic=     MQTT topic to publish to.
+  -q=, --qos=       quality of service level to use for all messages.
+  --willtopic=      set the will's topic
+  --willmsg=        set the will's message
+  --willqos=        set the will's quality of service
+  --willretain      set to retain the will message
+  -v, --verbose     set verbose
 ```
 
 _`-verbose` not implemented yet_
@@ -189,6 +197,17 @@ proc set_auth*(ctx: MqttCtx, username: string, password: string) =
 ```
 
 Set the authentication for the host
+
+
+____
+
+### set_will*
+
+```nim
+proc set_will*(ctx: MqttCtx, topic, msg: string, qos=0, retain=false) =
+```
+
+Set the clients will.
 
 
 ____
