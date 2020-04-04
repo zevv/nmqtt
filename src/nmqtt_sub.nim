@@ -13,7 +13,7 @@ proc handler() {.noconv.} =
   quit(0)
 
 
-proc nmqttSub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", username="", password="", topic: string, qos=0, keepalive=60, willtopic="", willmsg="", willqos=0, willretain=false, verbose=false) {.async.} =
+proc nmqttSub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", username="", password="", topic: string, qos=0, keepalive=60, removeretained=false, willtopic="", willmsg="", willqos=0, willretain=false, verbose=false) {.async.} =
   ## CLI tool for subscribe
   if clientid != "":
     ctx.clientId = clientid
@@ -32,6 +32,10 @@ proc nmqttSub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", use
     ctx.set_will(willtopic, willmsg, willqos, willretain)
 
   await ctx.start()
+
+  # Remove retained messages
+  if removeretained:
+    waitFor ctx.publish(topic, "", 0, true)
 
   proc on_data(topic, msg: string) =
     echo topic, ": ", msg
@@ -59,19 +63,20 @@ $options
           doc="Subscribe to a topic on a MQTT-broker.",
           cmdName="nmqtt_sub",
           help={
-            "host":     "IP-address of the broker. Defaults to 127.0.0.1",
-            "port":     "network port to connect too. Defaults to 1883.",
-            "ssl":      "enable ssl. Auto-enabled on port 8883.",
-            "clientid": "your connection ID. Defaults to nmqtt_pub_ appended with processID.",
-            "username": "provide a username",
-            "password": "provide a password",
-            "topic":    "MQTT topic to publish to.",
-            "qos":      "quality of service level to use for all messages. Defaults to 0.",
-            "keepalive":"keep alive in seconds for this client. Defaults to 60.",
-            "willtopic":"set the will's topic",
-            "willmsg":  "set the will's message",
-            "willqos":  "set the will's quality of service",
-            "willretain":"set to retain the will message"
+            "host":         "IP-address of the broker. Defaults to 127.0.0.1",
+            "port":         "network port to connect too. Defaults to 1883.",
+            "ssl":          "enable ssl. Auto-enabled on port 8883.",
+            "clientid":     "your connection ID. Defaults to nmqtt_pub_ appended with processID.",
+            "username":     "provide a username",
+            "password":     "provide a password",
+            "topic":        "MQTT topic to publish to.",
+            "qos":          "quality of service level to use for all messages. Defaults to 0.",
+            "keepalive":    "keep alive in seconds for this client. Defaults to 60.",
+            "removeretained": "clear any retained messages on the topic",
+            "willtopic":    "set the will's topic",
+            "willmsg":      "set the will's message",
+            "willqos":      "set the will's quality of service",
+            "willretain":   "set to retain the will message"
           },
           short={
             "password": 'P',
@@ -80,7 +85,8 @@ $options
             "willtopic": '\0',
             "willmsg": '\0',
             "willqos": '\0',
-            "willretain": '\0'
+            "willretain": '\0',
+            "removeretained": '\0'
           },
           usage=topLvlUse
           )
