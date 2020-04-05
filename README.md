@@ -261,7 +261,7 @@ Publish a message.
   - message: string
 
 **Optional:**
-  - qos: int     = 1, 2 or 3
+  - qos: int     = 0, 1 or 2
   - retain: bool = true or false
 
 **Publish message:**
