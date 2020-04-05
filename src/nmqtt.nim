@@ -82,7 +82,12 @@ type
     workQueue: Table[MsgId, Work]
     pubCallbacks: Table[string, PubCallback]
     inWork: bool
-    pingTxInterval: int # ms
+    keepAlive: int # ms
+    willFlag: bool
+    willQoS: int
+    willRetain: bool
+    willTopic: string
+    willMsg: string
 
     #when defined(broker):
     proto: string
@@ -420,6 +425,14 @@ proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
 proc sendConnect(ctx: MqttCtx): Future[bool] =
   var flags: uint8
   flags = flags or CleanSession.uint8
+  if ctx.willFlag:
+    flags = flags or WillFlag.uint8
+    if ctx.willQoS == 1:
+      flags = flags or WillQoS1.uint8
+    elif ctx.willQoS == 2:
+      flags = flags or WillQoS2.uint8
+    if ctx.willRetain:
+      flags = flags or WillRetain.uint8
   if ctx.username != "":
     flags = flags or UserNameFlag.uint8
   if ctx.password != "":
@@ -428,8 +441,13 @@ proc sendConnect(ctx: MqttCtx): Future[bool] =
   pkt.put "MQTT", true
   pkt.put 4.uint8
   pkt.put flags
-  pkt.put 60.uint16
+  pkt.put (ctx.keepAlive / 1000).uint16
   pkt.put ctx.clientId, true
+  if ctx.willFlag:
+    pkt.put (ctx.willTopic.len).uint16
+    pkt.put ctx.willTopic, false
+    pkt.put (ctx.willMsg.len).uint16
+    pkt.put ctx.willMsg, false
   if ctx.username != "":
     pkt.put ctx.username, true
   if ctx.password != "":
@@ -692,7 +710,11 @@ proc onConnAck(ctx: MqttCtx, pkt: Pkt): Future[void] =
   result = ctx.work()
 
 proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
-  let qos = (pkt.flags shr 1) and 0x03
+  let
+    qos = (pkt.flags shr 1) and 0x03
+    retain = pkt.flags and 0x01 # When subscribing and first message is a
+                                # retained message, this will be `1`
+                                # otherwise `0`.
   var
     offset: int
     msgid: MsgId
@@ -874,7 +896,7 @@ proc runRx(ctx: MqttCtx) {.async.} =
 proc runPing(ctx: MqttCtx) {.async.} =
   verbose("runping")
   while true:
-    await sleepAsync ctx.pingTxInterval
+    await sleepAsync ctx.keepAlive
     let ok = await ctx.sendPingReq()
     if not ok:
       break
@@ -882,8 +904,8 @@ proc runPing(ctx: MqttCtx) {.async.} =
 
 proc connectBroker(ctx: MqttCtx) {.async.} =
   ## Connect to the broker
-  if ctx.pingTxInterval == 0:
-    ctx.pingTxInterval = 60 * 1000
+  if ctx.keepAlive == 0:
+    ctx.keepAlive = 60 * 1000
 
   ctx.dbg "connecting to " & ctx.host & ":" & $ctx.port
   try:
@@ -937,7 +959,7 @@ proc newMqttCtx*(clientId: string): MqttCtx =
 proc set_ping_interval*(ctx: MqttCtx, txInterval: int = 60) =
   ## Set the clients ping interval in seconds. Default is 60 seconds.
   if txInterval > 0 and txInterval < 65535:
-    ctx.pingTxInterval = txInterval * 1000
+    ctx.keepAlive = txInterval * 1000
 
 proc set_host*(ctx: MqttCtx, host: string, port: int=1883, doSsl=false) =
   ## Set the MQTT host
@@ -949,6 +971,14 @@ proc set_auth*(ctx: MqttCtx, username: string, password: string) =
   ## Set the authentication for the host.
   ctx.username = username
   ctx.password = password
+
+proc set_will*(ctx: MqttCtx, topic, msg: string, qos=0, retain=false) =
+  ## Set the clients will.
+  ctx.willFlag   = true
+  ctx.willTopic  = topic
+  ctx.willMsg    = msg
+  ctx.willQoS    = qos
+  ctx.willRetain = retain
 
 proc connect*(ctx: MqttCtx) {.async.} =
   ## Connect to the broker.
@@ -968,7 +998,28 @@ proc disconnect*(ctx: MqttCtx) {.async.} =
   ctx.state = Disabled
 
 proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false) {.async.} =
-  ## Publish a message
+  ## Publish a message.
+  ##
+  ## **Required:**
+  ##  - topic: string
+  ##  - message: string
+  ##
+  ## **Optional:**
+  ##  - qos: int     = 0, 1 or 2
+  ##  - retain: bool = true or false
+  ##
+  ##
+  ## **Publish message:**
+  ## .. code-block::nim
+  ##    ctx.publish(topic = "nmqtt", message = "Hey there", qos = 0, retain = true)
+  ##
+  ##
+  ## **Remove retained message on topic:**
+  ##
+  ## Set the `message` to _null_.
+  ## .. code-block::nim
+  ##    ctx.publish(topic = "nmqtt", message = "", qos = 0, retain = true)
+  ##
   let msgId = ctx.nextMsgId()
   ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qos, message: message, retain: retain, typ: Publish)
   await ctx.work()
