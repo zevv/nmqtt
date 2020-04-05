@@ -48,10 +48,13 @@ OPTIONS
   -c=, --clientid=  your connection ID. Defaults to nmqtt_pub_ appended with processID.
   -u=, --username=  provide a username
   -P=, --password=  provide a password
-  -t=, --topic=     MQTT topic to publish to.
-  -m=, --msg=       set msg
+  -t=, --topic=     mqtt topic to publish to.
+  -m=, --msg=       message payload to send.
   -q=, --qos=       quality of service level to use for all messages.
   -r, --retain      retain messages on the broker.
+  --repeat=         repeat the publish N times.
+  --repeatdelay=    if using --repeat, wait N seconds between publish. Defaults to 0.
+  --removeretained  clear any received retained messages
   --willtopic=      set the will's topic
   --willmsg=        set the will's message
   --willqos=        set the will's quality of service
@@ -72,21 +75,23 @@ Usage:
   nmqtt_sub [-h host -p port -u username -P password] -t {topic}
 
 OPTIONS
-  -?, --help        print this cligen-erated help
-  --help-syntax     advanced: prepend,plurals,..
-  -h=, --host=      IP-address of the broker.
-  -p=, --port=      network port to connect too.
-  --ssl             enable ssl. Auto-enabled on port 8883.
-  -c=, --clientid=  your connection ID. Defaults to nmqtt_pub_ appended with processID.
-  -u=, --username=  provide a username
-  -P=, --password=  provide a password
-  -t=, --topic=     MQTT topic to publish to.
-  -q=, --qos=       quality of service level to use for all messages.
-  --willtopic=      set the will's topic
-  --willmsg=        set the will's message
-  --willqos=        set the will's quality of service
-  --willretain      set to retain the will message
-  -v, --verbose     set verbose
+  -?, --help         print this cligen-erated help
+  --help-syntax      advanced: prepend,plurals,..
+  -h=, --host=       IP-address of the broker. Defaults to 127.0.0.1
+  -p=, --port=       network port to connect too. Defaults to 1883.
+  --ssl              enable ssl. Auto-enabled on port 8883.
+  -c=, --clientid=   your connection ID. Defaults to nmqtt_pub_ appended with processID.
+  -u=, --username=   provide a username
+  -P=, --password=   provide a password
+  -t=, --topic=      MQTT topic to publish to.
+  -q=, --qos=        quality of service level to use for all messages. Defaults to 0.
+  -k=, --keepalive=  keep alive in seconds for this client. Defaults to 60.
+  --removeretained   clear any retained messages on the topic
+  --willtopic=       set the will's topic
+  --willmsg=         set the will's message
+  --willqos=         set the will's quality of service
+  --willretain       set to retain the will message
+  -v, --verbose      set verbose
 ```
 
 _`-verbose` not implemented yet_
