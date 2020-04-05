@@ -82,9 +82,9 @@ type
     workQueue: Table[MsgId, Work]
     pubCallbacks: Table[string, PubCallback]
     inWork: bool
-    keepAlive: int # ms
+    keepAlive: uint16 # ms
     willFlag: bool
-    willQoS: int
+    willQoS: uint8
     willRetain: bool
     willTopic: string
     willMsg: string
@@ -93,13 +93,6 @@ type
     proto: string
     version: uint8
     connFlags: string
-    keepAlive: uint16
-    willTopic: string
-    willMessage: string
-    willRetain: bool
-    willQos: uint8
-    #username: string
-    #password: string
     subscribed: Table[string, uint8] # Topic, Qos
     lastAction: float # Check keepAlive
 
@@ -309,15 +302,12 @@ proc removeSubscriber*(ctx: MqttCtx, topic: string) {.async.} =
 #when defined(broker):
 proc removeSubscriber*(ctx: MqttCtx) {.async.} =
   ## Removes a subscriber without knowing the topics
-  try:
-    for t, c in mqttsub.subscribers:
-      if ctx in c:
-        mqttsub.subscribers[t] = filter(c, proc(x: MqttCtx): bool = x != ctx)
+  for t, c in mqttsub.subscribers:
+    if ctx in c:
+      mqttsub.subscribers[t] = filter(c, proc(x: MqttCtx): bool = x != ctx)
 
-        if mqttsub.subscribers[t].len() == 0:
-          mqttsub.subscribers.del(t)
-  except:
-    wrn("crash removing subscriber without knowing topic")
+      if mqttsub.subscribers[t].len() == 0:
+        mqttsub.subscribers.del(t)
 
 #when defined(broker):
 proc qosAlign(qP, qS: uint8): uint8 =
@@ -441,7 +431,7 @@ proc sendConnect(ctx: MqttCtx): Future[bool] =
   pkt.put "MQTT", true
   pkt.put 4.uint8
   pkt.put flags
-  pkt.put (ctx.keepAlive / 1000).uint16
+  pkt.put (ctx.keepAlive.int / 1000).uint16
   pkt.put ctx.clientId, true
   if ctx.willFlag:
     pkt.put (ctx.willTopic.len).uint16
@@ -623,13 +613,16 @@ proc sendWill(ctx: MqttCtx) {.async.} =
     for c in mqttsub.subscribers[ctx.willTopic]:
       let msgId = c.nextMsgId()
       let qos = qosAlign(ctx.willQos, c.subscribed[ctx.willTopic])
-      c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: ctx.willTopic, qos: qos, message: ctx.willMessage, typ: Publish)
+      c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: ctx.willTopic, qos: qos, message: ctx.willMsg, typ: Publish)
       await c.work()
 
 #when defined(broker):
 proc publishToSubscribers(seqctx: seq[MqttCtx], pkt: Pkt, topic, message: string, qos: uint8) {.async.} =
   ## Publish async to clients
   for c in seqctx:
+    if c.state != Connected:
+      asyncCheck removeSubscriber(c, topic)
+      continue
     let msgId = c.nextMsgId()
     let qosSub = qosAlign(qos, c.subscribed[topic])
     #echo qos
@@ -658,7 +651,7 @@ proc onConnect(ctx: MqttCtx, pkt: Pkt) {.async.} =
     (nextLen, offset)         = pkt.getu16(offset)
     (ctx.willTopic, offset)   = pkt.getstring(offset,  parseInt($nextLen))
     (nextLen, offset)         = pkt.getu16(offset)
-    (ctx.willMessage, offset) = pkt.getstring(offset,  parseInt($nextLen))
+    (ctx.willMsg, offset)     = pkt.getstring(offset,  parseInt($nextLen))
 
     # Will Retain
     if ctx.connFlags[2] == '1':
@@ -896,7 +889,7 @@ proc runRx(ctx: MqttCtx) {.async.} =
 proc runPing(ctx: MqttCtx) {.async.} =
   verbose("runping")
   while true:
-    await sleepAsync ctx.keepAlive
+    await sleepAsync ctx.keepAlive.int
     let ok = await ctx.sendPingReq()
     if not ok:
       break
@@ -959,7 +952,7 @@ proc newMqttCtx*(clientId: string): MqttCtx =
 proc set_ping_interval*(ctx: MqttCtx, txInterval: int = 60) =
   ## Set the clients ping interval in seconds. Default is 60 seconds.
   if txInterval > 0 and txInterval < 65535:
-    ctx.keepAlive = txInterval * 1000
+    ctx.keepAlive = (txInterval * 1000).uint16
 
 proc set_host*(ctx: MqttCtx, host: string, port: int=1883, doSsl=false) =
   ## Set the MQTT host
@@ -977,7 +970,7 @@ proc set_will*(ctx: MqttCtx, topic, msg: string, qos=0, retain=false) =
   ctx.willFlag   = true
   ctx.willTopic  = topic
   ctx.willMsg    = msg
-  ctx.willQoS    = qos
+  ctx.willQoS    = qos.uint8
   ctx.willRetain = retain
 
 proc connect*(ctx: MqttCtx) {.async.} =
