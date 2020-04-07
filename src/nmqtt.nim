@@ -679,6 +679,8 @@ proc onConnect(ctx: MqttCtx, pkt: Pkt) {.async.} =
   # ClientID
   (nextLen, offset)       = pkt.getu16(offset)
   (ctx.clientId, offset)  = pkt.getstring(offset, parseInt($nextLen))
+  if not mqttbroker.spacesInClientId:
+    ctx.clientid = ctx.clientid.replace(" ", "")
 
   # Will Topic
   if ctx.connFlags[5] == '1':
