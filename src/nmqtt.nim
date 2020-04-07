@@ -406,7 +406,8 @@ proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
   var b: uint8
   r = await ctx.s.recvInto(b.addr, b.sizeof)
   if r != 1:
-    await ctx.close("remote closed connection")
+    when not defined(broker):
+      await ctx.close("remote closed connection")
     return
 
   let typ = (b shr 4).PktType
@@ -420,7 +421,8 @@ proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
     r = await ctx.s.recvInto(b.addr, b.sizeof)
 
     if r != 1:
-      await ctx.close("remote closed connection")
+      when not defined(broker):
+        await ctx.close("remote closed connection")
       return
 
     assert r == 1
@@ -434,7 +436,8 @@ proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
     r = await ctx.s.recvInto(pkt.data[0].addr, len)
 
     if r != len:
-      await ctx.close("remote closed connection")
+      when not defined(broker):
+        await ctx.close("remote closed connection")
       return
 
   ctx.dmp "rx> " & $pkt
