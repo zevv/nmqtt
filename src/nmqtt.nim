@@ -307,9 +307,6 @@ proc wrn(s: string) =
 #
 
 #when defined(broker):
-var mqttsub = MqttSub()
-
-#when defined(broker):
 proc addSubscriber*(ctx: MqttCtx, topic: string) {.async.} =
   ## Adds a subscriber to MqttBroker
   try:
