@@ -642,25 +642,27 @@ proc work(ctx: MqttCtx) {.async.} =
 proc sendWill(ctx: MqttCtx) {.async.} =
   ## Send the will
   if ctx.willTopic != "":
-    for c in mqttsub.subscribers[ctx.willTopic]:
+    for c in mqttbroker.subscribers[ctx.willTopic]:
       let msgId = c.nextMsgId()
       let qos = qosAlign(ctx.willQos, c.subscribed[ctx.willTopic])
       c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: ctx.willTopic, qos: qos, message: ctx.willMsg, typ: Publish)
       await c.work()
 
 #when defined(broker):
-proc publishToSubscribers(seqctx: seq[MqttCtx], pkt: Pkt, topic, message: string, qos: uint8) {.async.} =
+proc publishToSubscribers(seqctx: seq[MqttCtx], pkt: Pkt, topic, message: string, qos: uint8, senderId: string) {.async.} =
   ## Publish async to clients
   for c in seqctx:
     if c.state != Connected:
       asyncCheck removeSubscriber(c, topic)
       continue
-    let msgId = c.nextMsgId()
-    let qosSub = qosAlign(qos, c.subscribed[topic])
-    #echo qos
-    #echo c.subscribed[topic]
-    #let qosSub = qosAlign(qos, qos)
-    c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qosSub, message: message, typ: Publish)
+    let
+      msgId = c.nextMsgId()
+      qosSub = qosAlign(qos, c.subscribed[topic])
+    
+    if mqttbroker.passClientId:
+      c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qosSub, message: senderId & ":" & message, typ: Publish)
+    else:
+      c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qosSub, message: message, typ: Publish)
     await c.work()
 
 #when defined(broker):
