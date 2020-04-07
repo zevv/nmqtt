@@ -44,6 +44,17 @@ proc serve(ctx: AsyncSocket, host: string, port: int) {.async.} =
 
 proc nmqttBroker(config="", host="127.0.0.1", port: int=1883, verbose=0) {.async.} =
   ## CLI tool for broker
+  
+  mqttbroker.version = 4
+  mqttbroker.clientIdMaxLen = 65535
+  mqttbroker.clientKickOld = false
+  mqttbroker.emptyClientId = true
+  mqttbroker.spacesInClientId = false
+  mqttbroker.host = host
+  mqttbroker.port = Port(port)
+  mqttbroker.passClientId = false
+  mqttbroker.maxConnections = 0
+  #mqttbroker.retainExpire = 3600
 
   let broker = newAsyncSocket()
 
