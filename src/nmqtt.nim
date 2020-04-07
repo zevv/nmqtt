@@ -66,6 +66,7 @@ import tables
 
 #when defined(broker):
 import sequtils
+import random
 
 type
   MqttCtx* = ref object
@@ -206,6 +207,9 @@ type
 #when defined(broker):
 var
   mqttbroker = MqttBroker()
+  r = initRand(toInt(epochTime()))
+
+
 #
 # Packet helpers
 #
