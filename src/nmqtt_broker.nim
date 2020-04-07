@@ -8,26 +8,39 @@ proc processClient(s: AsyncSocket) {.async.} =
   let ctx = MqttCtx()
   ctx.s = s
   ctx.state = Connecting
-  while ctx.state in {Connecting, Connected}:
+
+  while ctx.state in [Connecting, Connected]:
     try:
       var pkt = await ctx.recv()
       if pkt.typ == Notype:
+        ctx.state = Error
         break
       await ctx.handle(pkt)
-      #asyncCheck ctx.handle(pkt)
     except:
-      echo "Boom"
-      ctx.state = Error
+      # We are closing the socket, when we are disabling or disconnecting
+      # the client. Therefor in these situations, the `ctx.state` must not
+      # be set to `Error`, since we are breaking the socket on purpose.
+      if ctx.state notin [Disabled, Disconnecting]:
+        ctx.state = Error
+      break
 
-  if ctx.state != Disconnected:
-    try:
-      await removeSubscriber(ctx)
-      await sendWill(ctx)
-      when defined(verbose):
-        echo ctx.clientid & " was lost"
-    except:
-      echo ctx.clientid & " crashed"
+  if ctx.state == Error:
+    # This happens on a ungraceful disconnects from the client.
+    asyncCheck sendWill(ctx)
 
+  if ctx.state in [Disconnected, Error]:
+    # Remove the client from the register for subscribers.
+    asyncCheck removeSubscriber(ctx)
+
+  if ctx.state != Disabled:
+    # The clients `state` is set to `Disabled`, if we cannot accept their
+    # `Connect`-packet and respond with a `ConnAck`. Since we dont accept
+    # the connection, the client is never added to `mqttbroker.connections`.
+    if mqttbroker.connections.hasKey(ctx.clientid):
+      mqttbroker.connections.del(ctx.clientid)
+
+  if not ctx.s.isClosed():
+    ctx.s.close()
   ctx.state = Disabled
 
 
