@@ -273,7 +273,7 @@ proc newPkt(typ: PktType=NOTYPE, flags: uint8=0): Pkt =
 #
 
 #when defined(broker):
-proc dmp(ctx: MqttSub) =
+proc dmp(ctx: MqttBroker) =
   #when defined(dev):
   var output: string
   for t, c in ctx.subscribers:
