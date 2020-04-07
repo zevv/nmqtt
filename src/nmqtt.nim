@@ -857,9 +857,24 @@ proc onSubscribe(ctx: MqttCtx, pkt: Pkt) {.async.} =
       ctx.subscribed[topic] = qos
       await addSubscriber(ctx, topic)
 
-    mqttsub.dmp()
+    mqttbroker.dmp()
 
     ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 0, typ: SubAck)
+
+    # Send retained messaged for #
+    if topic == "#":
+      for top, ret in mqttbroker.retained:
+        let
+          msgId = ctx.nextMsgId()
+          qosRet = qosAlign(qos, ret.qos)
+        ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: top, qos: qosRet, message: ret.msg, typ: Publish)
+    # Send retained messaged for specific topic
+    elif mqttbroker.retained.hasKey(topic):
+      let
+        msgId = ctx.nextMsgId()
+        qosRet = qosAlign(qos, mqttbroker.retained[topic].qos)
+      ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qosRet, message: mqttbroker.retained[topic].msg, typ: Publish)
+
     await ctx.work()
 
 proc onSubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
