@@ -780,10 +780,16 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
   (message, offset) = pkt.getstring(offset, false)
 
   when defined(broker):
-    if mqttsub.subscribers.hasKey("#"):
-      await publishToSubscribers(mqttsub.subscribers["#"], pkt, "#", message, qos)
-    if mqttsub.subscribers.hasKey(topic):
-      await publishToSubscribers(mqttsub.subscribers[topic], pkt, topic, message, qos)
+    if mqttbroker.subscribers.hasKey("#"):
+      await publishToSubscribers(mqttbroker.subscribers["#"], pkt, "#", message, qos, ctx.clientid)
+    if mqttbroker.subscribers.hasKey(topic):
+      await publishToSubscribers(mqttbroker.subscribers[topic], pkt, topic, message, qos, ctx.clientid)
+
+    if retain == 1:
+      if qos == 0 and message == "":
+        mqttbroker.retained.del(topic)
+      else:
+        mqttbroker.retained[topic] = RetainedMsg(msg: message, qos: qos, time: epochTime())
 
   when not defined(broker):
     for top, cb in ctx.pubCallbacks:
