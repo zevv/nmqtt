@@ -203,6 +203,9 @@ type
       discard
 
 
+#when defined(broker):
+var
+  mqttbroker = MqttBroker()
 #
 # Packet helpers
 #
