@@ -310,12 +310,12 @@ var mqttsub = MqttSub()
 
 #when defined(broker):
 proc addSubscriber*(ctx: MqttCtx, topic: string) {.async.} =
-  ## Adds a subscriber to MqttSub
+  ## Adds a subscriber to MqttBroker
   try:
-    if mqttsub.subscribers.hasKey(topic):
-      mqttsub.subscribers[topic].insert(ctx)
+    if mqttbroker.subscribers.hasKey(topic):
+      mqttbroker.subscribers[topic].insert(ctx)
     else:
-      mqttsub.subscribers[topic] = @[ctx]
+      mqttbroker.subscribers[topic] = @[ctx]
   except:
     wrn("crash adding a new subcriber")
 
@@ -323,20 +323,20 @@ proc addSubscriber*(ctx: MqttCtx, topic: string) {.async.} =
 proc removeSubscriber*(ctx: MqttCtx, topic: string) {.async.} =
   ## Removes a subscriber from specific topic
   try:
-    if mqttsub.subscribers.hasKey(topic):
-      mqttsub.subscribers[topic] = filter(mqttsub.subscribers[topic], proc(x: MqttCtx): bool = x != ctx)
+    if mqttbroker.subscribers.hasKey(topic):
+      mqttbroker.subscribers[topic] = filter(mqttbroker.subscribers[topic], proc(x: MqttCtx): bool = x != ctx)
   except:
     wrn("crash removing subscriber with specific topic")
 
 #when defined(broker):
 proc removeSubscriber*(ctx: MqttCtx) {.async.} =
   ## Removes a subscriber without knowing the topics
-  for t, c in mqttsub.subscribers:
+  for t, c in mqttbroker.subscribers:
     if ctx in c:
-      mqttsub.subscribers[t] = filter(c, proc(x: MqttCtx): bool = x != ctx)
+      mqttbroker.subscribers[t] = filter(c, proc(x: MqttCtx): bool = x != ctx)
 
-      if mqttsub.subscribers[t].len() == 0:
-        mqttsub.subscribers.del(t)
+      if mqttbroker.subscribers[t].len() == 0:
+        mqttbroker.subscribers.del(t)
 
 #when defined(broker):
 proc qosAlign(qP, qS: uint8): uint8 =
