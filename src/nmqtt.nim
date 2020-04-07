@@ -903,7 +903,7 @@ proc onUnsubscribe(ctx: MqttCtx, pkt: Pkt) {.async.} =
       await removeSubscriber(ctx, topic)
       ctx.subscribed.del(topic)
 
-    mqttsub.dmp()
+    mqttbroker.dmp()
 
     ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 0, typ: UnsubAck)
     await ctx.work()
@@ -917,10 +917,9 @@ proc onUnsubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
 
 #when defined(broker):
 proc onDisconnect(ctx: MqttCtx, pkt: Pkt) {.async.} =
-  when defined(broker):
-    await removeSubscriber(ctx)
-    await sendWill(ctx)
-    ctx.state = Disconnected
+  #await removeSubscriber(ctx)
+  #await sendWill(ctx)
+  ctx.state = Disconnected
   when defined(verbose):
     verbose(ctx.clientid & " has disconnected")
 
