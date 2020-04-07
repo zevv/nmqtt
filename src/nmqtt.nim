@@ -101,8 +101,30 @@ type
     subscribers: Table[string, seq[MqttCtx]]
 
   #when defined(broker):
-  MqttRetain* = ref object
-    messages: seq[string] # Topic, Msg, Qos
+  MqttBroker* = ref object
+    host: string
+    port: Port
+    doSsl: bool
+    connections: Table[string, MqttCtx]
+    retained: Table[string, RetainedMsg] # Topic, Msg, Qos
+    subscribers: Table[string, seq[MqttCtx]]
+
+    connall: seq[MqttCtx]
+    clientids: seq[string]
+
+    version: uint8
+    clientIdMaxLen: int
+    clientKickOld: bool
+    emptyClientId: bool
+    spacesInClientId: bool
+    passClientId: bool
+    maxConnections: int
+    #retainExpire: int # sec
+
+  RetainedMsg = object
+    msg: string
+    qos: uint8
+    time: float
 
   #when defined(broker):
   ConnAckFlag = enum
