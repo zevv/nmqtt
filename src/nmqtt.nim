@@ -95,6 +95,7 @@ type
     proto: string
     version: uint8
     connFlags: string
+    retained: seq[string]
     subscribed: Table[string, uint8] # Topic, Qos
     lastAction: float # Check keepAlive
 
@@ -108,7 +109,7 @@ type
     port: Port
     doSsl: bool
     connections: Table[string, MqttCtx]
-    retained: Table[string, RetainedMsg] # Topic, Msg, Qos
+    retained: Table[string, RetainedMsg] # Topic, Msg
     subscribers: Table[string, seq[MqttCtx]]
 
     connall: seq[MqttCtx]
@@ -127,6 +128,7 @@ type
     msg: string
     qos: uint8
     time: float
+    clientid: string
 
   #when defined(broker):
   ConnAckFlag = enum
@@ -787,7 +789,8 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
       if qos == 0 and message == "":
         mqttbroker.retained.del(topic)
       else:
-        mqttbroker.retained[topic] = RetainedMsg(msg: message, qos: qos, time: epochTime())
+        mqttbroker.retained[topic] = RetainedMsg(msg: message, qos: qos, time: epochTime(), clientid: ctx.clientid)
+        ctx.retained.add(topic)
 
   when not defined(broker):
     for top, cb in ctx.pubCallbacks:

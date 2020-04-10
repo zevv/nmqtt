@@ -39,6 +39,11 @@ proc processClient(s: AsyncSocket) {.async.} =
     if mqttbroker.connections.hasKey(ctx.clientid):
       mqttbroker.connections.del(ctx.clientid)
 
+    # Cleanup retained messages from client.
+    for top in ctx.retained:
+      if mqttbroker.retained[top].clientid == ctx.clientid:
+        mqttbroker.retained.del(top)
+
   if not ctx.s.isClosed():
     ctx.s.close()
   ctx.state = Disabled
