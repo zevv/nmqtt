@@ -477,11 +477,6 @@ proc sendConnect(ctx: MqttCtx): Future[bool] =
   ctx.state = Connecting
   result = ctx.send(pkt)
 
-#when defined(broker):
-proc sendConnAck(ctx: MqttCtx, flags: uint16): Future[bool] =
-  var pkt = newPkt(ConnAck)
-  pkt.put flags.uint16
-  result = ctx.send(pkt)
 
 proc sendDisconnect(ctx: MqttCtx): Future[bool] =
   let pkt = newPkt(Disconnect, 0)
@@ -494,22 +489,10 @@ proc sendSubscribe(ctx: MqttCtx, msgId: MsgId, topic: string, qos: Qos): Future[
   pkt.put qos.uint8
   result = ctx.send(pkt)
 
-#when defined(broker):
-proc sendSubAck(ctx: MqttCtx, msgId: MsgId): Future[bool] =
-  var pkt = newPkt(SubAck, 0b0010)
-  pkt.put msgId.uint16
-  result = ctx.send(pkt)
-
 proc sendUnsubscribe(ctx: MqttCtx, msgId: MsgId, topic: string): Future[bool] =
   var pkt = newPkt(Unsubscribe, 0b0010)
   pkt.put msgId.uint16
   pkt.put topic, true
-  result = ctx.send(pkt)
-
-#when defined(broker):
-proc sendUnsubAck(ctx: MqttCtx, msgId: MsgId): Future[bool] =
-  var pkt = newPkt(Unsuback, 0b0010)
-  pkt.put msgId.uint16
   result = ctx.send(pkt)
 
 proc sendPublish(ctx: MqttCtx, msgId: MsgId, topic: string, message: string, qos: Qos, retain: bool): Future[bool] =
@@ -545,6 +528,24 @@ proc sendPubComp(ctx: MqttCtx, msgId: MsgId): Future[bool] =
 
 proc sendPingReq(ctx: MqttCtx): Future[bool] =
   var pkt = newPkt(Pingreq)
+  result = ctx.send(pkt)
+
+#when defined(broker):
+proc sendConnAck(ctx: MqttCtx, flags: uint16): Future[bool] =
+  var pkt = newPkt(ConnAck)
+  pkt.put flags.uint16
+  result = ctx.send(pkt)
+
+#when defined(broker):
+proc sendSubAck(ctx: MqttCtx, msgId: MsgId): Future[bool] =
+  var pkt = newPkt(SubAck, 0b0010)
+  pkt.put msgId.uint16
+  result = ctx.send(pkt)
+
+#when defined(broker):
+proc sendUnsubAck(ctx: MqttCtx, msgId: MsgId): Future[bool] =
+  var pkt = newPkt(Unsuback, 0b0010)
+  pkt.put msgId.uint16
   result = ctx.send(pkt)
 
 #when defined(broker):
