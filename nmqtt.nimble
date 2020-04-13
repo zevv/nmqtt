@@ -4,6 +4,7 @@ author        = "zevv"
 description   = "Native MQTT client library and binaries"
 license       = "MIT"
 srcDir        = "src"
+installFiles  = @["nmqtt.nim"]
 bin           = @["nmqtt_pub", "nmqtt_sub"]
 
 
