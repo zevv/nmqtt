@@ -9,4 +9,4 @@ bin           = @["nmqtt_pub", "nmqtt_sub", "nmqtt_broker"]
 
 # Dependencies
 requires "nim >= 1.0.6"
-requires "cligen >= 0.9.43"
+requires "https://github.com/c-blake/cligen#36d5218"
