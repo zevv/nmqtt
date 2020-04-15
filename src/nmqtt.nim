@@ -111,10 +111,6 @@ type
     connections: Table[string, MqttCtx]
     retained: Table[string, RetainedMsg] # Topic, Msg
     subscribers: Table[string, seq[MqttCtx]]
-
-    connall: seq[MqttCtx]
-    clientids: seq[string]
-
     version: uint8
     clientIdMaxLen: int
     clientKickOld: bool
