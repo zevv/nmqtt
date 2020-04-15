@@ -60,19 +60,46 @@ proc serve(ctx: AsyncSocket, host: string, port: int) {.async.} =
     asyncCheck processClient(client)
 
 
-proc nmqttBroker(config="", host="127.0.0.1", port: int=1883, verbose=0) {.async.} =
-  ## CLI tool for broker
+proc showConfig(mb: MqttBroker, configfile: string, verbosity: int) =
+  ## Show the config details
+  const config = """
+nmqtt_broker vx.x.x
+
+Running nmqtt_broker - MQTT broker
+
+BROKER:
+  Using configuration file:
+  $1
+
+  """
+  const manual = """
+nmqtt_broker vx.x.x
+
+Running nmqtt_broker - MQTT broker
+
+BROKER:
+  Host:       $1
+  Port:       $2
+  SSL:        $3
+  Starting:   $11
+
+OPTIONS:
+  Verbosity:             $4
+  Max connections:       $5
+  ClientID max lenght:   $6
+  ClientID allow spaces: $7
+  ClientID allow empty:  $8
+  ClientID in payload:   $9
+  Client kick old:       $10
   
-  mqttbroker.version = 4
-  mqttbroker.clientIdMaxLen = 65535
-  mqttbroker.clientKickOld = false
-  mqttbroker.emptyClientId = true
-  mqttbroker.spacesInClientId = false
-  mqttbroker.host = host
-  mqttbroker.port = Port(port)
-  mqttbroker.passClientId = false
-  mqttbroker.maxConnections = 0
-  #mqttbroker.retainExpire = 3600
+  """
+  
+  if configfile != "":
+    echo config.format(configfile)
+  else:
+    echo manual.format(mb.host, mb.port, "NOT IMPLEMENTED", verbosity, mb.maxConnections,
+                       mb.clientIdMaxLen, mb.spacesInClientId, mb.emptyClientId,
+                       mb.passClientId, mb.clientKickOld, now())
 
 proc nmqttBroker(config="", host="127.0.0.1", port: int=1883, verbosity=0, max_conn=0,
                 clientid_maxlen=65535, clientid_spaces=false, clientid_empty=false,
@@ -99,6 +126,8 @@ proc nmqttBroker(config="", host="127.0.0.1", port: int=1883, verbosity=0, max_c
   mqttbroker.maxConnections = max_conn
   #mqttbroker.retainExpire = 3600
 
+  if verbosity > 0:
+    showConfig(mqttbroker, config, verbosity)
 
   let broker = newAsyncSocket()
 
