@@ -74,7 +74,11 @@ proc nmqttBroker(config="", host="127.0.0.1", port: int=1883, verbose=0) {.async
   mqttbroker.maxConnections = 0
   #mqttbroker.retainExpire = 3600
 
-  let broker = newAsyncSocket()
+proc nmqttBroker(config="", host="127.0.0.1", port: int=1883, verbosity=0, max_conn=0,
+                clientid_maxlen=65535, clientid_spaces=false, clientid_empty=false,
+                client_kickold=false, clientid_pass=false, password_file=""
+                ) {.async.} =
+  ## CLI tool for a MQTT broker
 
   #if config != "":
   #  loadConfig
@@ -83,6 +87,20 @@ proc nmqttBroker(config="", host="127.0.0.1", port: int=1883, verbose=0) {.async
   #    path to Key and Cert
   #  if passwords:
   #    password & username
+
+  mqttbroker.version = 4
+  mqttbroker.host = host
+  mqttbroker.port = Port(port)
+  mqttbroker.clientIdMaxLen = clientid_maxlen
+  mqttbroker.spacesInClientId = clientid_spaces
+  mqttbroker.emptyClientId = clientid_empty
+  mqttbroker.clientKickOld = client_kickold
+  mqttbroker.passClientId = clientid_pass
+  mqttbroker.maxConnections = max_conn
+  #mqttbroker.retainExpire = 3600
+
+
+  let broker = newAsyncSocket()
 
   asyncCheck broker.serve(host, port)
 
@@ -99,23 +117,35 @@ USAGE
 
 CONFIG
   Use the configuration file for detailed settings,
-  such as SSL, adjusting keep alive timer, etc.
+  such as SSL, adjusting keep alive timer, etc. or
+  specify options at the command line.
 
 OPTIONS
 $options
 """
-  clCfg.hTabCols = @[clOptKeys, clDflVal, clDescrip]
-  dispatch(nmqttBroker,
+  clCfg.hTabCols = @[clOptKeys, clDescrip]
+  
+  dispatchGen(nmqttBroker,
           doc="Subscribe to a topic on a MQTT-broker.",
           cmdName="nmqtt_broker",
           help={
-            "config":    "absolute path to the config file",
-            "host":     "IP-address to serve the broker on.",
-            "port":     "network port to accept connecting from.",
-            "verbose":     "verbose from 0-3."
+            "config":           "[NOT IMPLEMENTED] absolute path to the config file. Overrides all options.",
+            "host":             "IP-address to serve the broker on.",
+            "port":             "network port to accept connecting from.",
+            "verbosity":        "[NOT IMPLEMENTED] verbosity from 0-3.",
+            "max-conn":         "max simultaneous connections. Defaults to no limit.",
+            "clientid-maxlen":  "max lenght of clientid. Defaults to 65535.",
+            "clientid-spaces":  "allow spaces in clientid. Defaults to false.",
+            "clientid-empty":   "allow empty clientid and assign random id. Defaults to false.",
+            "client-kickold":   "kick old client, if new client has same clientid. Defaults to false.",
+            "clientid-pass":    "pass clientid in payload {clientid:payload}. Defaults to false.",
+            "password-file":    "[NOT IMPLEMENTED] absolute path to the password file"
           },
           short={
-            "help": '?'
+            "help": '?',
+            "max-conn": '\0'
           },
-          usage=topLvlUse
+          usage=topLvlUse,
           )
+
+  cligenQuit dispatchNmqttBroker(skipHelp=true)
