@@ -249,14 +249,14 @@ proc getstring(pkt: Pkt, offset: int, withLen: bool): (string, int) =
       val.add pkt.data[i].char
     result = (val, pkt.data.len)
 
-#when defined(broker):
+when defined(broker):
 proc getstring(pkt: Pkt, offset: int, len: int): (string, int) =
   var val: string
   for i in offset..<len+offset:
     val.add pkt.data[i].char
   result = (val, len+offset)
 
-#when defined(broker):
+when defined(broker):
 proc getbin(pkt: Pkt, b: int): (string, int) =
   result = (toBin(parseBiggestInt($pkt.data[b]), 8), b+1)
 
@@ -273,20 +273,13 @@ proc newPkt(typ: PktType=NOTYPE, flags: uint8=0): Pkt =
 #
 # Debug
 #
-
-#when defined(broker):
-proc dmp(ctx: MqttBroker) =
-  #when defined(dev):
-  var output: string
-  for t, c in ctx.subscribers:
-    if output != "":
-      output.add(", ")
-    output.add("{" & t & ": " & $c.len & "}")
-  stderr.write "\e[37m" & "Subscribers>> " & output & "\e[0m\n"
-
 proc dmp(ctx: MqttCtx, s: string) =
-  when defined(dev):
+  when not defined(broker):
+    if defined(dev):
     stderr.write "\e[1;30m" & s & "\e[0m\n"
+  when defined(broker):
+    if defined(dev) or mqttbroker.verbosity >= 2:
+      stderr.write "\e[1;30m" & s & "\e[0m\n"
   when defined(test):
     let s = split(s, " ")
     testDmp.add(@[$(s[0] & " " & s[1]), $join(s[2..s.len-1], " ")])
