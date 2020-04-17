@@ -58,16 +58,22 @@
 
 #{.experimental: "codeReordering".}
 
-import strutils
-import asyncnet
-import net
-import asyncDispatch
-import tables
+import
+  strutils,
+  asyncnet,
+  net,
+  asyncDispatch,
+  tables
 
-#when defined(broker):
-import sequtils
-import times
-import random
+when defined(broker):
+  import
+    cligen,
+    sequtils,
+    times,
+    random,
+    utils/passwords
+  from parsecfg import loadConfig, getSectionValue
+  from os import fileExists
 
 type
   MqttCtx* = ref object
