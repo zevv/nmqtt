@@ -772,8 +772,7 @@ proc onConnect(ctx: MqttCtx, pkt: Pkt) {.async.} =
     # Add new client
     mqttbroker.connections[ctx.clientid] = ctx
     ctx.state = Connected
-    when defined(verbose):
-      echo ctx.clientId & " has connected"
+    asyncCheck keepAliveMonitor(ctx)
 
     ctx.workQueue[0.uint16] = Work(wk: PubWork, flags: connFlag.uint16, state: WorkNew, qos: 0, typ: ConnAck)
     await ctx.work()
@@ -964,6 +963,9 @@ proc onPingResp(ctx: MqttCtx, pkt: Pkt) {.async.} =
   discard
 
 proc handle(ctx: MqttCtx, pkt: Pkt) {.async.} =
+  when defined(broker):
+    ctx.lastAction = epochTime()
+
   case pkt.typ
     of ConnAck: await ctx.onConnAck(pkt)
     of Publish: await ctx.onPublish(pkt)
