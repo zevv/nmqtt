@@ -53,6 +53,11 @@ proc deleteUserToFile(filename, username: string) =
 
 proc nmqttPassword(adduser=false, batch=false, deluser=false, args: seq[string]) =
   ## Main handler
+
+  if args.len() == 0:
+    echo "Error, missing parameters. Run again with --help."
+    quit()
+
   echo """
 nmqtt_broker v$1
 
