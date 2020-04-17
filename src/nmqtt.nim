@@ -374,6 +374,8 @@ proc qosAlign(qP, qS: uint8): uint8 =
     else:
     result = qP
 
+when defined(broker):
+  proc keepAliveMonitor(ctx: MqttCtx) {.async.}
 
 #
 # MQTT context
