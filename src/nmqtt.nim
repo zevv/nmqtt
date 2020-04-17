@@ -330,7 +330,7 @@ proc wrn(s: string) =
 # Subscribers
 #
 
-#when defined(broker):
+when defined(broker):
 proc addSubscriber*(ctx: MqttCtx, topic: string) {.async.} =
   ## Adds a subscriber to MqttBroker
   try:
@@ -339,18 +339,18 @@ proc addSubscriber*(ctx: MqttCtx, topic: string) {.async.} =
     else:
       mqttbroker.subscribers[topic] = @[ctx]
   except:
-    wrn("crash adding a new subcriber")
+      wrn("Crash when adding a new subcriber")
 
-#when defined(broker):
+when defined(broker):
 proc removeSubscriber*(ctx: MqttCtx, topic: string) {.async.} =
   ## Removes a subscriber from specific topic
   try:
     if mqttbroker.subscribers.hasKey(topic):
       mqttbroker.subscribers[topic] = filter(mqttbroker.subscribers[topic], proc(x: MqttCtx): bool = x != ctx)
   except:
-    wrn("crash removing subscriber with specific topic")
+      wrn("Crash when removing subscriber with specific topic")
 
-#when defined(broker):
+when defined(broker):
 proc removeSubscriber*(ctx: MqttCtx) {.async.} =
   ## Removes a subscriber without knowing the topics
     var delTop: seq[string]
@@ -364,14 +364,14 @@ proc removeSubscriber*(ctx: MqttCtx) {.async.} =
     for t in delTop:
         mqttbroker.subscribers.del(t)
 
-#when defined(broker):
+when defined(broker):
 proc qosAlign(qP, qS: uint8): uint8 =
-  ## Aligns the for publisher and subscriber.
+    ## Aligns the QOS for publisher and subscriber.
   if qP == qS:
     result = qP
   elif qP > qS:
     result = qS
-  elif qP < qS:
+    else:
     result = qP
 
 
