@@ -829,10 +829,12 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
   (message, offset) = pkt.getstring(offset, false)
 
   when defined(broker):
+    # Send message to all subscribers on "#"
     if mqttbroker.subscribers.hasKey("#"):
-      await publishToSubscribers(mqttbroker.subscribers["#"], pkt, "#", message, qos, ctx.clientid)
+      await publishToSubscribers(mqttbroker.subscribers["#"], pkt, "#", message, qos, retain, ctx.clientid)
+    # Send message to all subscribers on _the topic_
     if mqttbroker.subscribers.hasKey(topic):
-      await publishToSubscribers(mqttbroker.subscribers[topic], pkt, topic, message, qos, ctx.clientid)
+      await publishToSubscribers(mqttbroker.subscribers[topic], pkt, topic, message, qos, retain, ctx.clientid)
 
     if retain == 1:
       if qos == 0 and message == "":
