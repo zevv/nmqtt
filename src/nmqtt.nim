@@ -1218,3 +1218,7 @@ proc msgQueue*(ctx: MqttCtx): int =
   ## You can use this to ensure, that all your of messages are sent, before
   ## exiting your program.
   result = ctx.workQueue.len()
+
+
+when defined(broker):
+  include "utils/broker.nim"
