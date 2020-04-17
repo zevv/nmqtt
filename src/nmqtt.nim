@@ -90,7 +90,7 @@ type
     workQueue: Table[MsgId, Work]
     pubCallbacks: Table[string, PubCallback]
     inWork: bool
-    keepAlive: uint16 # ms
+    keepAlive: uint16
     willFlag: bool
     willQoS: uint8
     willRetain: bool
@@ -493,8 +493,9 @@ proc sendConnect(ctx: MqttCtx): Future[bool] =
   pkt.put "MQTT", true
   pkt.put 4.uint8
   pkt.put flags
-  pkt.put (ctx.keepAlive.int / 1000).uint16
+  pkt.put ctx.keepAlive.uint16
   pkt.put ctx.clientId, true
+
   if ctx.willFlag:
     pkt.put (ctx.willTopic.len).uint16
     pkt.put ctx.willTopic, false
@@ -1058,7 +1059,7 @@ proc runRx(ctx: MqttCtx) {.async.} =
 
 proc runPing(ctx: MqttCtx) {.async.} =
   while true:
-    await sleepAsync ctx.keepAlive.int
+    await sleepAsync ctx.keepAlive.int * 1000
     let ok = await ctx.sendPingReq()
     if not ok:
       break
@@ -1067,7 +1068,7 @@ proc runPing(ctx: MqttCtx) {.async.} =
 proc connectBroker(ctx: MqttCtx) {.async.} =
   ## Connect to the broker
   if ctx.keepAlive == 0:
-    ctx.keepAlive = 60 * 1000
+    ctx.keepAlive = 60
 
   ctx.dbg "Connecting to " & ctx.host & ":" & $ctx.port
   try:
@@ -1121,7 +1122,7 @@ proc newMqttCtx*(clientId: string): MqttCtx =
 proc set_ping_interval*(ctx: MqttCtx, txInterval: int = 60) =
   ## Set the clients ping interval in seconds. Default is 60 seconds.
   if txInterval > 0 and txInterval < 65535:
-    ctx.keepAlive = (txInterval * 1000).uint16
+    ctx.keepAlive = txInterval.uint16
 
 proc set_host*(ctx: MqttCtx, host: string, port: int=1883, doSsl=false) =
   ## Set the MQTT host
