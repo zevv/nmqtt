@@ -106,33 +106,6 @@ type
     lastAction: float # Check keepAlive
 
   #when defined(broker):
-  MqttSub* = ref object ## Managing the subscribers
-    subscribers: Table[string, seq[MqttCtx]]
-
-  #when defined(broker):
-  MqttBroker* = ref object
-    host: string
-    port: Port
-    doSsl: bool
-    connections: Table[string, MqttCtx]
-    retained: Table[string, RetainedMsg] # Topic, Msg
-    subscribers: Table[string, seq[MqttCtx]]
-    version: uint8
-    clientIdMaxLen: int
-    clientKickOld: bool
-    emptyClientId: bool
-    spacesInClientId: bool
-    passClientId: bool
-    maxConnections: int
-    #retainExpire: int # sec
-
-  RetainedMsg = object
-    msg: string
-    qos: uint8
-    time: float
-    clientid: string
-
-  #when defined(broker):
   ConnAckFlag = enum
     ConnAcc               = 0x00
     ConnRefProtocol       = 0x01
@@ -180,9 +153,6 @@ type
     flags: uint8
     data: seq[uint8]
 
-  PubState = enum
-    PubNew, PubSent, PubAcked
-
   WorkKind = enum
     PubWork, SubWork
 
@@ -199,8 +169,7 @@ type
     topic: string
     qos: Qos
     typ: PktType
-    #when defined(broker):
-    flags: uint16
+    flags: uint16 #when defined(broker)
     case wk: WorkKind
     of PubWork:
       retain: bool
@@ -209,7 +178,35 @@ type
       discard
 
 
-#when defined(broker):
+when defined(broker):
+  type
+    MqttSub* = ref object ## Managing the subscribers
+      subscribers: Table[string, seq[MqttCtx]]
+
+    MqttBroker* = ref object
+      host: string
+      port: Port
+      doSsl: bool
+      verbosity: int
+      connections: Table[string, MqttCtx]
+      retained: Table[string, RetainedMsg] # Topic, RetaindMsg
+      subscribers: Table[string, seq[MqttCtx]]
+      version: uint8
+      clientIdMaxLen: int
+      clientKickOld: bool
+      emptyClientId: bool
+      spacesInClientId: bool
+      passClientId: bool
+      maxConnections: int
+      passwords: Table[string, string]
+
+    RetainedMsg = object
+      msg: string
+      qos: uint8
+      time: float
+      clientid: string
+
+when defined(broker):
 var
   mqttbroker = MqttBroker()
   r = initRand(toInt(epochTime()))
