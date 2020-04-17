@@ -816,9 +816,15 @@ proc onConnAck(ctx: MqttCtx, pkt: Pkt): Future[void] =
 proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let
     qos = (pkt.flags shr 1) and 0x03
-    retain = pkt.flags and 0x01 # When subscribing and first message is a
+    retain = if (pkt.flags and 0x01) == 1: true else: false
+                                # When subscribing and first message is a
                                 # retained message, this will be `1`
                                 # otherwise `0`.
+                                #
+                                # TODO for nmqtt_sub:
+                                # Allow for passing the retained flag, so
+                                # the subscriber can decide, if it wants
+                                # only reteained message with --retained-only flag.
   var
     offset: int
     msgid: MsgId
