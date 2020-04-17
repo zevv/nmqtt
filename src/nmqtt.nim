@@ -737,7 +737,12 @@ proc onConnect(ctx: MqttCtx, pkt: Pkt) {.async.} =
     (nextLen, offset)      = pkt.getu16(offset)
     (ctx.password, offset) = pkt.getstring(offset,  parseInt($nextLen))
 
-  var connFlag = ConnAcc #: ConnAckFlag
+    # Check password and username
+    if mqttbroker.passwords.len() > 0:
+      let pass = mqttbroker.passwords.getOrDefault(ctx.username)
+      if pass == "" or pass[0..59] != makePassword(ctx.password, pass[60..pass.len-1], pass[0..59]):
+        await denyConnect(ctx, ConnRefBadUserPwd)
+        return
 
   # TODO: Check password
   # if password != ctx.password and username != ctx.username:
