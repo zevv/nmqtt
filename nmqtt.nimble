@@ -4,8 +4,8 @@ author        = "zevv"
 description   = "Native MQTT client library and binaries"
 license       = "MIT"
 srcDir        = "src"
-bin           = @["nmqtt", "nmqtt_password", "nmqtt_pub", "nmqtt_sub"]
 installFiles  = @["nmqtt.nim"]
+bin           = @["nmqtt", "nmqtt_password", "nmqtt_pub", "nmqtt_sub"]
 
 
 # Dependencies
