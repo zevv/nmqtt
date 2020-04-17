@@ -290,11 +290,41 @@ proc dbg(ctx: MqttCtx, s: string) =
 proc verbose(s: string) =
   stderr.write "\e[37m" & s & "\e[0m\n"
 
+when defined(broker):
+  proc verbose(e: string, s: Table) =
+    var output: string
+    for t, c in s:
+      if output != "":
+        output.add(", ")
+      when c is RetainedMsg:
+        output.add("{" & t & "}")
+      else:
+        output.add("{" & t & ": " & $c.len & "}")
+    stderr.write "\e[37m" & e & " >> " & output & "\e[0m\n"
+
+  proc verbose(ctx: auto) =
+    var output: string
+    for t, c in fieldPairs(ctx[]):
+      when c is AsyncSocket:
+        let conn = if c.isClosed(): "..disconnected.." else: "..connected.."
+        output.add("  " & t & ": " & conn & "\n")
+      when c is Table:
+        output.add("  " & t & ": " & $c.len & "\n")
+      when c is MqttCtx:
+        output.add("  " & t & ": " & $c.clientid & "\n")
+      when c is string or c is bool or c is int or c is uint8 or c is uint16:
+        output.add("  " & t & ": " & $c & "\n")
+
+    when ctx is MqttBroker:
+      stderr.write "\e[37m" & "Broker      >>\n" & output & "\e[0m\n"
+    when ctx is MqttCtx:
+      stderr.write "\e[37m" & "Client      >> " & ctx.clientid & "\n" & output & "\e[0m\n"
+
 proc wrn(ctx: MqttCtx, s: string) =
-  stderr.write "\e[1;31m" & s & "\e[0m\n"
+  stderr.write "\e[1;31mWarning >> " & s & "\e[0m\n"
 
 proc wrn(s: string) =
-  stderr.write "\e[1;31m" & s & "\e[0m\n"
+  stderr.write "\e[1;31mWarning >> " & s & "\e[0m\n"
 
 #
 # Subscribers
