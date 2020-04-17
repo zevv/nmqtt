@@ -692,8 +692,18 @@ proc publishToSubscribers(seqctx: seq[MqttCtx], pkt: Pkt, topic, message: string
       c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qosSub, message: message, typ: Publish)
     await c.work()
 
+when defined(broker):
+  proc denyConnect(ctx: MqttCtx, connFlag: ConnAckFlag) {.async.} =
+    ## Denying connections and closing socket
+    discard await sendConnAck(ctx, connFlag.uint16)
+    ctx.state = Disabled # [MQTT-3.2.2-5] Close the connection immediately
+    ctx.s.close()
+
 #when defined(broker):
 proc onConnect(ctx: MqttCtx, pkt: Pkt) {.async.} =
+  when not defined(broker):
+    ctx.wrn "Packet type only supported for broker: " & $pkt.typ
+  else:
   var
     offset: int
     nextLen: uint16
@@ -703,7 +713,6 @@ proc onConnect(ctx: MqttCtx, pkt: Pkt) {.async.} =
   (ctx.version, offset)   = pkt.getu8(offset)
   (ctx.connFlags, offset) = getbin(pkt, offset)
   (ctx.keepAlive, offset) = pkt.getu16(offset)
-  # ClientID
   (nextLen, offset)       = pkt.getu16(offset)
   (ctx.clientId, offset)  = pkt.getstring(offset, parseInt($nextLen))
   if not mqttbroker.spacesInClientId:
@@ -744,47 +753,56 @@ proc onConnect(ctx: MqttCtx, pkt: Pkt) {.async.} =
         await denyConnect(ctx, ConnRefBadUserPwd)
         return
 
-  # TODO: Check password
-  # if password != ctx.password and username != ctx.username:
-  #   connFlag = ConnRefBadUserPwd
-
+    # 3.1.2.2 Protocol Level
   if ctx.proto != "MQTT":
+      await denyConnect(ctx, ConnRefProtocol)
+      return
+
     # 3.1.2.2 Protocol Level
-    connFlag = ConnRefProtocol
-  elif ctx.version != mqttbroker.version:
-    # 3.1.2.2 Protocol Level
-    connFlag = ConnRefProtocol
-  elif mqttbroker.connections.hasKey(ctx.clientid):
-    # [MQTT-3.1.4-2] Close connection if clientID is identical
+    if ctx.version != mqttbroker.version:
+      await denyConnect(ctx, ConnRefProtocol)
+      return
+
+    # Check if clientid already exist as an connection.
+    # Close connection if clientID is identical to existing clientID [MQTT-3.1.4-2]
+    if mqttbroker.connections.hasKey(ctx.clientid):
     if mqttbroker.clientKickOld:
       mqttbroker.connections[ctx.clientid].state = Disabled
       mqttbroker.connections[ctx.clientid].s.close()
     else:
-      connFlag = ConnRefRejected
-  elif ctx.clientid.strip() == "" or ctx.clientid.len() > mqttbroker.clientIdMaxLen:
-    # [MQTT-3.1.3-5], [MQTT-3.1.3-8], [MQTT-3.1.3-9] Require a clientID
-    if mqttbroker.emptyClientId:
+        await denyConnect(ctx, ConnRefRejected)
+        return
+
+    # Require a clientID [MQTT-3.1.3-5], [MQTT-3.1.3-8], [MQTT-3.1.3-9]
+    if ctx.clientid.strip() == "":
       # [MQTT-3.1.3-6] Assign random unique key
+    if mqttbroker.emptyClientId:
       ctx.clientid = $r.next()
     else:
-      connFlag = ConnRefRejected
-  elif mqttbroker.maxConnections > 0:
-    if mqttbroker.connections.len() == mqttbroker.maxConnections:
-      connFlag = ConnRefUnavailable
+        await denyConnect(ctx, ConnRefRejected)
+        return
 
+    # Check the lenght of the clientID
+    if ctx.clientid.len() > mqttbroker.clientIdMaxLen:
+      await denyConnect(ctx, ConnRefRejected)
+      return
 
-  if connFlag == ConnAcc:
-    # Add new client
+    # Check for max simultaneous connections
+    if mqttbroker.maxConnections > 0 and mqttbroker.connections.len() == mqttbroker.maxConnections:
+      await denyConnect(ctx, ConnRefUnavailable)
+      return
+
     mqttbroker.connections[ctx.clientid] = ctx
     ctx.state = Connected
     asyncCheck keepAliveMonitor(ctx)
 
-    ctx.workQueue[0.uint16] = Work(wk: PubWork, flags: connFlag.uint16, state: WorkNew, qos: 0, typ: ConnAck)
+    if mqttbroker.verbosity >= 1:
+      verbose("Connections >> " & ctx.clientId & " has connected")
+    if mqttbroker.verbosity >= 3:
+      verbose(ctx)
+
+    ctx.workQueue[0.uint16] = Work(wk: PubWork, flags: ConnAcc.uint16, state: WorkNew, qos: 0, typ: ConnAck)
     await ctx.work()
-  else:
-    discard await sendConnAck(ctx, connFlag.uint16)
-    ctx.state = Disabled # [MQTT-3.2.2-5] Close the connection immediately 
-    ctx.s.close()
 
 proc onConnAck(ctx: MqttCtx, pkt: Pkt): Future[void] =
   ctx.state = Connected
