@@ -842,12 +842,19 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
     if mqttbroker.subscribers.hasKey(topic):
       await publishToSubscribers(mqttbroker.subscribers[topic], pkt, topic, message, qos, retain, ctx.clientid)
 
-    if retain == 1:
+    if retain:
       if qos == 0 and message == "":
         mqttbroker.retained.del(topic)
       else:
+        # Add or overwrite existing retained messages on this topic.
         mqttbroker.retained[topic] = RetainedMsg(msg: message, qos: qos, time: epochTime(), clientid: ctx.clientid)
+        # Check if client already has published a retained messaged on this topic. In that
+        # case do not add it, since the QOS, msg and time is preserved in the MqttBroker.retained.
+        if topic notin ctx.retained:
         ctx.retained.add(topic)
+
+      if mqttbroker.verbosity >= 1:
+        verbose("Retained   ", mqttbroker.retained)
 
   when not defined(broker):
     for top, cb in ctx.pubCallbacks:
