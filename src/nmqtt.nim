@@ -353,11 +353,15 @@ proc removeSubscriber*(ctx: MqttCtx, topic: string) {.async.} =
 #when defined(broker):
 proc removeSubscriber*(ctx: MqttCtx) {.async.} =
   ## Removes a subscriber without knowing the topics
+    var delTop: seq[string]
   for t, c in mqttbroker.subscribers:
     if ctx in c:
       mqttbroker.subscribers[t] = filter(c, proc(x: MqttCtx): bool = x != ctx)
 
       if mqttbroker.subscribers[t].len() == 0:
+          delTop.add(t)
+
+    for t in delTop:
         mqttbroker.subscribers.del(t)
 
 #when defined(broker):
