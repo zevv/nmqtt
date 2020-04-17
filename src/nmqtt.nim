@@ -399,7 +399,7 @@ proc close(ctx: MqttCtx, reason: string) {.async.} =
 
 
 proc send(ctx: MqttCtx, pkt: Pkt): Future[bool] {.async.} =
-
+  ## Send the packet
   if ctx.state notin {Connecting, Connected, Disconnecting}:
     return false
 
@@ -426,7 +426,7 @@ proc send(ctx: MqttCtx, pkt: Pkt): Future[bool] {.async.} =
 
 
 proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
-
+  ## Receive and parse the packet
   if ctx.state notin {Connecting,Connected}:
     return
 
@@ -483,10 +483,12 @@ proc sendConnect(ctx: MqttCtx): Future[bool] =
       flags = flags or WillQoS2.uint8
     if ctx.willRetain:
       flags = flags or WillRetain.uint8
+
   if ctx.username != "":
     flags = flags or UserNameFlag.uint8
   if ctx.password != "":
     flags = flags or PasswordFlag.uint8
+
   var pkt = newPkt(Connect)
   pkt.put "MQTT", true
   pkt.put 4.uint8
@@ -667,7 +669,7 @@ proc work(ctx: MqttCtx) {.async.} =
       ctx.workQueue.del msgId
   ctx.inWork = false
 
-#when defined(broker):
+when defined(broker):
 proc sendWill(ctx: MqttCtx) {.async.} =
   ## Send the will
   if ctx.willTopic != "":
@@ -677,8 +679,8 @@ proc sendWill(ctx: MqttCtx) {.async.} =
       c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: ctx.willTopic, qos: qos, message: ctx.willMsg, typ: Publish)
       await c.work()
 
-#when defined(broker):
-proc publishToSubscribers(seqctx: seq[MqttCtx], pkt: Pkt, topic, message: string, qos: uint8, senderId: string) {.async.} =
+when defined(broker):
+  proc publishToSubscribers(seqctx: seq[MqttCtx], pkt: Pkt, topic, message: string, qos: uint8, retain: bool, senderId: string) {.async.} =
   ## Publish async to clients
   for c in seqctx:
     if c.state != Connected:
@@ -689,9 +691,9 @@ proc publishToSubscribers(seqctx: seq[MqttCtx], pkt: Pkt, topic, message: string
       qosSub = qosAlign(qos, c.subscribed[topic])
     
     if mqttbroker.passClientId:
-      c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qosSub, message: senderId & ":" & message, typ: Publish)
+        c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qosSub, retain: retain, message: senderId & ":" & message, typ: Publish)
     else:
-      c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qosSub, message: message, typ: Publish)
+        c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qosSub, retain: retain, message: message, typ: Publish)
     await c.work()
 
 when defined(broker):
@@ -812,7 +814,7 @@ proc onConnAck(ctx: MqttCtx, pkt: Pkt): Future[void] =
   if code == 0:
     ctx.dbg "Connection established"
   else:
-    ctx.wrn "Connect failed, code " & $code
+    ctx.wrn "Connect failed, code: " & $code
   result = ctx.work()
 
 proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
@@ -843,6 +845,9 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
     # Send message to all subscribers on _the topic_
     if mqttbroker.subscribers.hasKey(topic):
       await publishToSubscribers(mqttbroker.subscribers[topic], pkt, topic, message, qos, retain, ctx.clientid)
+
+    if mqttbroker.verbosity >= 1:
+      verbose("Client      >> " & ctx.clientId & " has published a message")
 
     if retain:
       if qos == 0 and message == "":
@@ -905,6 +910,9 @@ proc onPubComp(ctx: MqttCtx, pkt: Pkt) {.async.} =
 
 #when defined(broker):
 proc onSubscribe(ctx: MqttCtx, pkt: Pkt) {.async.} =
+  when not defined(broker):
+    ctx.wrn "Packet type only supported for broker: " & $pkt.typ
+  else:
   var
     offset: int
     msgId: MsgId
@@ -912,7 +920,6 @@ proc onSubscribe(ctx: MqttCtx, pkt: Pkt) {.async.} =
     qos: uint8
     nextLen: uint16
 
-  when defined(broker):
     (msgId, offset) = pkt.getu16(0)
     ctx.msgIdSeq    = msgId
 
@@ -923,8 +930,6 @@ proc onSubscribe(ctx: MqttCtx, pkt: Pkt) {.async.} =
 
       ctx.subscribed[topic] = qos
       await addSubscriber(ctx, topic)
-
-    mqttbroker.dmp()
 
     ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 0, typ: SubAck)
 
@@ -942,6 +947,10 @@ proc onSubscribe(ctx: MqttCtx, pkt: Pkt) {.async.} =
         qosRet = qosAlign(qos, mqttbroker.retained[topic].qos)
       ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qosRet, message: mqttbroker.retained[topic].msg, typ: Publish)
 
+    if mqttbroker.verbosity >= 1:
+      verbose("Client      >> " & ctx.clientId & " has subscribed to a topic")
+      verbose("Subscribers", mqttbroker.subscribers)
+
     await ctx.work()
 
 proc onSubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
@@ -953,13 +962,15 @@ proc onSubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
 
 #when defined(broker):
 proc onUnsubscribe(ctx: MqttCtx, pkt: Pkt) {.async.} =
+  when not defined(broker):
+    ctx.wrn "Packet type only supported for broker: " & $pkt.typ
+  else:
   var
     offset: int
     msgId: MsgId
     topic: string
     nextLen: uint16
 
-  when defined(broker):
     (msgId, offset) = pkt.getu16(0)
     ctx.msgIdSeq    = msgId
 
@@ -970,7 +981,9 @@ proc onUnsubscribe(ctx: MqttCtx, pkt: Pkt) {.async.} =
       await removeSubscriber(ctx, topic)
       ctx.subscribed.del(topic)
 
-    mqttbroker.dmp()
+    if mqttbroker.verbosity >= 1:
+      verbose("Client      >> " & ctx.clientId & " has unsubscribed from a topic")
+      verbose("Subscribers", mqttbroker.subscribers)
 
     ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 0, typ: UnsubAck)
     await ctx.work()
@@ -984,15 +997,20 @@ proc onUnsubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
 
 #when defined(broker):
 proc onDisconnect(ctx: MqttCtx, pkt: Pkt) {.async.} =
+  when not defined(broker):
+    ctx.wrn "Packet type only supported for broker: " & $pkt.typ
+  else:
   #await removeSubscriber(ctx)
   #await sendWill(ctx)
   ctx.state = Disconnected
-  when defined(verbose):
-    verbose(ctx.clientid & " has disconnected")
+    if mqttbroker.verbosity >= 1:
+      verbose("Connections >> " & ctx.clientid & " has disconnected")
 
 #when defined(broker):
 proc onPingReq(ctx: MqttCtx, pkt: Pkt) {.async.} =
-  when defined(broker):
+  when not defined(broker):
+    ctx.wrn "Packet type only supported for broker: " & $pkt.typ
+  else:
     var msgId = ctx.nextMsgId() + 1000
     while ctx.workQueue.hasKey(msgId):
       msgId += 1000
@@ -1022,7 +1040,7 @@ proc handle(ctx: MqttCtx, pkt: Pkt) {.async.} =
     of Unsubscribe: await ctx.onUnsubscribe(pkt)
     of Disconnect: await ctx.onDisconnect(pkt)
     of PingReq: await ctx.onPingReq(pkt)
-    else: ctx.wrn "Unond pkt type " & $pkt.typ
+    else: ctx.wrn "Unknown pkt type " & $pkt.typ
 
 #
 # Async work functions
@@ -1036,10 +1054,9 @@ proc runRx(ctx: MqttCtx) {.async.} =
         break
       await ctx.handle(pkt)
   except OsError:
-    ctx.wrn "Boom"
+    ctx.wrn "Boom, sending packet to closed socket"
 
 proc runPing(ctx: MqttCtx) {.async.} =
-  verbose("runping")
   while true:
     await sleepAsync ctx.keepAlive.int
     let ok = await ctx.sendPingReq()
@@ -1052,7 +1069,7 @@ proc connectBroker(ctx: MqttCtx) {.async.} =
   if ctx.keepAlive == 0:
     ctx.keepAlive = 60 * 1000
 
-  ctx.dbg "connecting to " & ctx.host & ":" & $ctx.port
+  ctx.dbg "Connecting to " & ctx.host & ":" & $ctx.port
   try:
     ctx.s = await asyncnet.dial(ctx.host, ctx.port)
     if ctx.doSsl:
@@ -1060,7 +1077,7 @@ proc connectBroker(ctx: MqttCtx) {.async.} =
         ctx.ssl = newContext(protSSLv23, CVerifyNone)
         wrapConnectedSocket(ctx.ssl, ctx.s, handshakeAsClient)
       else:
-        ctx.wrn "requested SSL session but ssl is not enabled"
+        ctx.wrn "Requested SSL session but ssl is not enabled"
         await ctx.close("SSL not enabled")
         ctx.state = Error
     let ok = await ctx.sendConnect()
