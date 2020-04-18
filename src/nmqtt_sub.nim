@@ -23,6 +23,9 @@ proc nmqttSub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", use
   else:
     ctx.set_host(host, port, ssl)
 
+  if username != "" or password != "":
+    ctx.set_auth(username, password)
+
   # Set the ping interval/keep alive
   ctx.set_ping_interval(keepalive)
 
