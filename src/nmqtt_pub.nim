@@ -9,6 +9,9 @@ proc nmqttPub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", use
   let ctx = newMqttCtx(if clientid != "": clientid else: "nmqtt_pub_" & $getCurrentProcessId())
   ctx.set_host(host, port, ssl)
 
+  if username != "" or password != "":
+    ctx.set_auth(username, password)
+
   # Set the will message
   if willretain and (willtopic == "" or willmsg == ""):
     echo "Error: Will-retain giving, but no topic given"
