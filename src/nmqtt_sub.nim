@@ -15,8 +15,7 @@ proc handler() {.noconv.} =
 
 proc nmqttSub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", username="", password="", topic: string, qos=0, keepalive=60, removeretained=false, willtopic="", willmsg="", willqos=0, willretain=false, verbose=false) {.async.} =
   ## CLI tool for subscribe
-  if clientid != "":
-    ctx.clientId = clientid
+  let ctx = newMqttCtx(if clientid != "": clientid else: "nmqttsub-" & $getCurrentProcessId())
 
   if port == 8883:
     ctx.set_host(host, port, true)

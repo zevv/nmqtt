@@ -6,7 +6,7 @@ include "nmqtt.nim"
 
 proc nmqttPub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", username="", password="", topic, msg: string, qos=0, retain=false, repeat=0, repeatdelay=0, willtopic="", willmsg="", willqos=0, willretain=false, verbose=false) =
   ## CLI tool for publish
-  let ctx = newMqttCtx(if clientid != "": clientid else: "nmqtt_pub_" & $getCurrentProcessId())
+  let ctx = newMqttCtx(if clientid != "": clientid else: "nmqttpub-" & $getCurrentProcessId())
   ctx.set_host(host, port, ssl)
 
   if username != "" or password != "":
