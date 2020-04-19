@@ -51,16 +51,18 @@ suite "test suite for subscribe":
     let (tpc, msg) = tdata("subscribe to topic qos=2")
 
     proc conn() {.async.} =
+      # We need all these sleepAsync cause it's too fast in -d:release
+      await sleepAsync 500
       proc on_data_sub_qos2(topic: string, message: string) =
         if topic == tpc:
           check(message == msg)
           return
       await ctxListen.subscribe(tpc, 2, on_data_sub_qos2)
-      await sleepAsync 500
+      await sleepAsync 1000
       await ctxMain.publish(tpc, msg, 2)
-      await sleepAsync 500
+      await sleepAsync 1000
       await ctxListen.unsubscribe(tpc)
-      await sleepAsync 500
+      await sleepAsync 1000
       check(testDmp[0][0] == "tx> Subscribe(02):")
       check(testDmp[1][0] == "rx> SubAck(00):") # and testDmp[1][1] == "00 03 02 ") # and testDmp[1][1] == "00 01 02 ")
       check(testDmp[2][0] == "tx> Publish(04):")
