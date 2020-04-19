@@ -1,4 +1,4 @@
-# Native Nim MQTT client library
+# Native Nim MQTT client library and binaries
 
 This is a hybrid package including a native Nim MQTT library and
 binaries for a MQTT broker, publisher and subscriber.
@@ -39,6 +39,8 @@ The package provides 4 MQTT binaries:
 ## nmqtt
 ```
 $ nmqtt --help
+nmqtt version 1.0.0
+
 nmqtt is a MQTT v3.1.1 broker
 
 USAGE
@@ -68,14 +70,17 @@ OPTIONS
   --client-kickold    kick old client, if new client has same clientid. Defaults to false.
   --clientid-pass     pass clientid in payload {clientid:payload}. Defaults to false.
   --password-file=    absolute path to the password file
+  --ssl               activate ssl for the broker - requires --ssl-cert and --ssl-key.
+  --ssl-cert=         absolute path to the ssl certificate.
+  --ssl-key=          absolute path to the ssl key.
 ```
-_SSL is not supported_
 
 
 ## nmqtt_password
 ```
 $ nmqtt_password --help
-Add users and passwords to nmqtt's password file.
+nmqtt_password is a user and password manager for nmqtt
+nmqtt_password is based upon nmqtt version 1.0.0
 
 USAGE
   nmqtt_password -a {password_file.conf} {username}
@@ -89,49 +94,47 @@ OPTIONS
   -?, --help     print this cligen-erated help
   -a, --adduser  add a new user to the password file.
   -b, --batch    run in batch mode to allow passing passwords on the command line.
-  -d, --deluser  delete a user form the password file.
+  -d, --deluser  delete a user from the password file.
 ```
 
 
 ## nmqtt_pub
 ```
 $ ./nmqtt_pub --help
-Publish MQTT messages to a MQTT-broker.
+nmqtt_pub is a MQTT client for publishing messages to a MQTT-broker.
+nmqtt_pub is based upon nmqtt version 1.0.0
 
 Usage:
   nmqtt_pub [options] -t {topic} -m {message}
   nmqtt_pub [-h host -p port -u username -P password] -t {topic} -m {message}
 
 OPTIONS
-  -?, --help        print this cligen-erated help
-  --help-syntax     advanced: prepend,plurals,..
-  -h=, --host=      IP-address of the broker.
-  -p=, --port=      network port to connect too.
-  --ssl             enable ssl. Auto-enabled on port 8883.
-  -c=, --clientid=  your connection ID. Defaults to nmqtt_pub_ appended with processID.
-  -u=, --username=  provide a username
-  -P=, --password=  provide a password
-  -t=, --topic=     mqtt topic to publish to.
-  -m=, --msg=       message payload to send.
-  -q=, --qos=       quality of service level to use for all messages.
-  -r, --retain      retain messages on the broker.
-  --repeat=         repeat the publish N times.
-  --repeatdelay=    if using --repeat, wait N seconds between publish. Defaults to 0.
-  --removeretained  clear any received retained messages
-  --willtopic=      set the will's topic
-  --willmsg=        set the will's message
-  --willqos=        set the will's quality of service
-  --willretain      set to retain the will message
-  -v, --verbose     set verbose
+  -?, --help         print this cligen-erated help
+  -h=, --host=       IP-address of the broker.
+  -p=, --port=       network port to connect too.
+  --ssl              use ssl.
+  -c=, --clientid=   your connection ID. Defaults to nmqttpub- appended with processID.
+  -u=, --username=   provide a username
+  -P=, --password=   provide a password
+  -t=, --topic=      mqtt topic to publish to.
+  -m=, --msg=        message payload to send.
+  -q=, --qos=        quality of service level to use for all messages.
+  -r, --retain       retain messages on the broker.
+  --repeat=          repeat the publish N times.
+  --repeatdelay=     if using --repeat, wait N seconds between publish. Defaults to 0.
+  --willtopic=       set the will's topic
+  --willmsg=         set the will's message
+  --willqos=         set the will's quality of service
+  --willretain       set to retain the will message
+  -v=, --verbosity=  set the verbosity level from 0-2. Defaults to 0.
 ```
-
-_`-verbose` not implemented yet_
 
 
 ## nmqtt_sub
 ```
 $ ./nmqtt_sub --help
-Subscribe to a topic on a MQTT-broker.
+nmqtt_sub is a MQTT client that will subscribe to a topic on a MQTT-broker.
+nmqtt_sub is based upon nmqtt version 1.0.0
 
 Usage:
   nmqtt_sub [options] -t {topic}
@@ -139,14 +142,13 @@ Usage:
 
 OPTIONS
   -?, --help         print this cligen-erated help
-  --help-syntax      advanced: prepend,plurals,..
   -h=, --host=       IP-address of the broker. Defaults to 127.0.0.1
   -p=, --port=       network port to connect too. Defaults to 1883.
-  --ssl              enable ssl. Auto-enabled on port 8883.
-  -c=, --clientid=   your connection ID. Defaults to nmqtt_pub_ appended with processID.
+  --ssl              use ssl.
+  -c=, --clientid=   your connection ID. Defaults to nmqttsub- appended with processID.
   -u=, --username=   provide a username
   -P=, --password=   provide a password
-  -t=, --topic=      MQTT topic to publish to.
+  -t=, --topic=      MQTT topic to subscribe too. For multipe topics, separate them by comma.
   -q=, --qos=        quality of service level to use for all messages. Defaults to 0.
   -k=, --keepalive=  keep alive in seconds for this client. Defaults to 60.
   --removeretained   clear any retained messages on the topic
@@ -154,10 +156,8 @@ OPTIONS
   --willmsg=         set the will's message
   --willqos=         set the will's quality of service
   --willretain       set to retain the will message
-  -v, --verbose      set verbose
+  -v=, --verbosity=  set the verbosity level from 0-2. Defaults to 0.
 ```
-
-_`-verbose` not implemented yet_
 
 
 # Library
@@ -250,7 +250,7 @@ ____
 ### set_host*
 
 ```nim
-proc set_host*(ctx: MqttCtx, host: string, port: int=1883, doSsl=false) =
+proc set_host*(ctx: MqttCtx, host: string, port: int=1883, sslOn=false) =
 ```
 
 Set the MQTT host
