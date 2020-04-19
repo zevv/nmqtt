@@ -1,5 +1,7 @@
 import cligen
+
 from os import getCurrentProcessId
+from strutils import split
 
 include "nmqtt.nim"
 
@@ -42,16 +44,20 @@ proc nmqttSub(host="127.0.0.1", port=1883, ssl=false, clientid="", username="", 
   # Connec to broker
   await ctx.start()
 
-  # Remove retained messages
-  if removeretained:
-    waitFor ctx.publish(topic, "", 0, true)
+  # Loop through topics
+  for t in topic.split(","):
+    # Remove retained messages
+    if removeretained:
+      waitFor ctx.publish(t, "", 0, true)
 
-  # Callback for subscribe
-  proc on_data(topic, msg: string) =
-    echo topic, ": ", msg
+    # Callback for subscribe
+    proc on_data(t, msg: string) =
+      echo t, ": ", msg
 
-  # Subscribe to topic
-  await ctx.subscribe(topic, qos, on_data)
+    # Subscribe to topic
+    await ctx.subscribe(t, qos, on_data)
+    if ctx.verbosity >= 1:
+      ctx.dbg "Subscribing to: " & t
 
   # Control CTRL+c hook
   setControlCHook(handler)
