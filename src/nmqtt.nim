@@ -80,7 +80,9 @@ type
   MqttCtx* = ref object
     host: string
     port: Port
-    doSsl: bool
+    sslOn: bool
+    verbosity: int
+    beenConnected: bool
     username: string
     password: string
     state: State
@@ -187,7 +189,9 @@ when defined(broker):
     MqttBroker* = ref object
       host: string
       port: Port
-      doSsl: bool
+      sslOn: bool
+      sslCert: string
+      sslKey: string
       verbosity: int
       connections: Table[string, MqttCtx]
       retained: Table[string, RetainedMsg] # Topic, RetaindMsg
@@ -276,7 +280,7 @@ proc newPkt(typ: PktType=NOTYPE, flags: uint8=0): Pkt =
 #
 proc dmp(ctx: MqttCtx, s: string) =
   when not defined(broker):
-    if defined(dev):
+    if defined(dev) or ctx.verbosity >= 2:
       stderr.write "\e[1;30m" & s & "\e[0m\n"
   when defined(broker):
     if defined(dev) or mqttbroker.verbosity >= 2:
@@ -393,7 +397,8 @@ proc sendDisconnect(ctx: MqttCtx): Future[bool] {.async.}
 proc close(ctx: MqttCtx, reason: string) {.async.} =
   if ctx.state in {Connecting, Connected}:
     ctx.state = Disconnecting
-    ctx.dbg "Closing: " & reason
+    if ctx.verbosity >= 1:
+      ctx.dbg "Closing: " & reason
     discard await ctx.sendDisconnect()
     ctx.s.close()
     ctx.state = Disconnected
@@ -433,7 +438,15 @@ proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
 
   var r: int
   var b: uint8
-  r = await ctx.s.recvInto(b.addr, b.sizeof)
+
+  # TODO:
+  # When the broker is running in SSL-mode, we need the try/except, since
+  # we will encounter a silent crash in recvInto, when the client is
+  # not actually using SSL.
+  try:
+    r = await ctx.s.recvInto(b.addr, b.sizeof)
+  except:
+    return
   if r != 1:
     when not defined(broker):
       await ctx.close("remote closed connection")
@@ -800,6 +813,7 @@ proc onConnect(ctx: MqttCtx, pkt: Pkt) {.async.} =
 
     mqttbroker.connections[ctx.clientid] = ctx
     ctx.state = Connected
+    ctx.beenConnected = true
     asyncCheck keepAliveMonitor(ctx)
 
     if mqttbroker.verbosity >= 1:
@@ -814,7 +828,9 @@ proc onConnAck(ctx: MqttCtx, pkt: Pkt): Future[void] =
   ctx.state = Connected
   let (code, _) = pkt.getu8(1)
   if code == 0:
-    ctx.dbg "Connection established"
+    ctx.beenConnected = true
+    if ctx.verbosity >= 1:
+      ctx.dbg "Connection established"
   else:
     ctx.wrn "Connect failed, code: " & $code
   result = ctx.work()
@@ -1056,7 +1072,8 @@ proc runRx(ctx: MqttCtx) {.async.} =
         break
       await ctx.handle(pkt)
   except OsError:
-    ctx.wrn "Boom, sending packet to closed socket"
+    if ctx.verbosity >= 2:
+      ctx.wrn "Boom, socket is closed"
 
 proc runPing(ctx: MqttCtx) {.async.} =
   while true:
@@ -1071,10 +1088,11 @@ proc connectBroker(ctx: MqttCtx) {.async.} =
   if ctx.keepAlive == 0:
     ctx.keepAlive = 60
 
-  ctx.dbg "Connecting to " & ctx.host & ":" & $ctx.port
+  if ctx.verbosity >= 1:
+    ctx.dbg "Connecting to " & ctx.host & ":" & $ctx.port
   try:
     ctx.s = await asyncnet.dial(ctx.host, ctx.port)
-    if ctx.doSsl:
+    if ctx.sslOn:
       when defined(ssl):
         ctx.ssl = newContext(protSSLv23, CVerifyNone)
         wrapConnectedSocket(ctx.ssl, ctx.s, handshakeAsClient)
@@ -1087,7 +1105,10 @@ proc connectBroker(ctx: MqttCtx) {.async.} =
       asyncCheck ctx.runRx()
       asyncCheck ctx.runPing()
   except OSError as e:
-    ctx.dbg "Error connecting to " & ctx.host & " " & e.msg
+    if ctx.verbosity >= 1 or not ctx.beenConnected:
+      ctx.dbg "Error connecting to " & ctx.host
+    if ctx.verbosity >= 2:
+      echo e.msg
     ctx.state = Error
 
 proc runConnect(ctx: MqttCtx) {.async.} =
@@ -1125,11 +1146,11 @@ proc set_ping_interval*(ctx: MqttCtx, txInterval: int = 60) =
   if txInterval > 0 and txInterval < 65535:
     ctx.keepAlive = txInterval.uint16
 
-proc set_host*(ctx: MqttCtx, host: string, port: int=1883, doSsl=false) =
+proc set_host*(ctx: MqttCtx, host: string, port: int=1883, sslOn=false) =
   ## Set the MQTT host
   ctx.host = host
   ctx.port = Port(port)
-  ctx.doSsl = doSsl
+  ctx.sslOn = sslOn
 
 proc set_auth*(ctx: MqttCtx, username: string, password: string) =
   ## Set the authentication for the host.
@@ -1143,6 +1164,10 @@ proc set_will*(ctx: MqttCtx, topic, msg: string, qos=0, retain=false) =
   ctx.willMsg    = msg
   ctx.willQoS    = qos.uint8
   ctx.willRetain = retain
+
+proc set_verbosity*(ctx: MqttCtx, verbosity: int) =
+  ## Set the verbosity.
+  ctx.verbosity = verbosity
 
 proc connect*(ctx: MqttCtx) {.async.} =
   ## Connect to the broker.
@@ -1158,7 +1183,7 @@ proc start*(ctx: MqttCtx) {.async.} =
 
 proc disconnect*(ctx: MqttCtx) {.async.} =
   ## Disconnect from the broker.
-  await ctx.close("User request")
+  await ctx.close("disconnect")
   ctx.state = Disabled
 
 proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false) {.async.} =
