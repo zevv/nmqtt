@@ -1,5 +1,8 @@
 import cligen
+
 from os import getCurrentProcessId
+
+import utils/version
 
 include "nmqtt.nim"
 
@@ -56,7 +59,10 @@ proc nmqttPub(host="127.0.0.1", port=1883, ssl=false, clientid="", username="", 
 
 when isMainModule:
 
-  let topLvlUse = """${doc}
+  let topLvlUse = """nmqtt_pub is a MQTT client for publishing messages to a MQTT-broker.
+nmqtt_pub is based upon nmqtt version """ & nmqttVersion & """
+
+
 Usage:
   $command [options] -t {topic} -m {message}
   $command [-h host -p port -u username -P password] -t {topic} -m {message}
@@ -64,16 +70,14 @@ Usage:
 OPTIONS
 $options
 """
-  #clCfg.hTabCols = @[clOptKeys, clDflVal, clDescrip]
   clCfg.hTabCols = @[clOptKeys, clDescrip]
-  dispatch(nmqttPub,
-          doc="Publish MQTT messages to a MQTT-broker.",
+  dispatchGen(nmqttPub,
           cmdName="nmqtt_pub",
           help={
             "host":         "IP-address of the broker.",
             "port":         "network port to connect too.",
-            "ssl":          "enable ssl. Auto-enabled on port 8883.",
-            "clientid":     "your connection ID. Defaults to nmqtt_pub_ appended with processID.",
+            "ssl":          "use ssl.",
+            "clientid":     "your connection ID. Defaults to nmqttpub- appended with processID.",
             "username":     "provide a username",
             "password":     "provide a password",
             "topic":        "mqtt topic to publish to.",
@@ -85,7 +89,8 @@ $options
             "willtopic":    "set the will's topic",
             "willmsg":      "set the will's message",
             "willqos":      "set the will's quality of service",
-            "willretain":   "set to retain the will message"
+            "willretain":   "set to retain the will message",
+            "verbosity":    "set the verbosity level from 0-2. Defaults to 0."
           },
           short={
             "password": 'P',
@@ -96,5 +101,8 @@ $options
             "willqos": '\0',
             "willretain": '\0'
           },
-          usage=topLvlUse
+          usage=topLvlUse,
+          dispatchName="publisher"
           )
+
+  cligenQuit publisher(skipHelp=true)
