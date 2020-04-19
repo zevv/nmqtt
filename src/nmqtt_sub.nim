@@ -4,23 +4,24 @@ from os import getCurrentProcessId
 include "nmqtt.nim"
 
 
-let ctx = newMqttCtx("nmqtt_sub_" & $getCurrentProcessId())
+let ctx = newMqttCtx("nmqttsub-" & $getCurrentProcessId())
 
 
 proc handler() {.noconv.} =
   ## Catch ctrl+c from user
+  echo ""
   waitFor ctx.disconnect()
   quit(0)
 
-
-proc nmqttSub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", username="", password="", topic: string, qos=0, keepalive=60, removeretained=false, willtopic="", willmsg="", willqos=0, willretain=false, verbose=false) {.async.} =
+proc nmqttSub(host="127.0.0.1", port=1883, ssl=false, clientid="", username="", password="", topic: string, qos=0, keepalive=60, removeretained=false, willtopic="", willmsg="", willqos=0, willretain=false, verbosity=0) {.async.} =
   ## CLI tool for subscribe
-  let ctx = newMqttCtx(if clientid != "": clientid else: "nmqttsub-" & $getCurrentProcessId())
+  if verbosity >= 1:
+    echo "Running nmqtt_sub v" & nmqttVersion
 
-  if port == 8883:
-    ctx.set_host(host, port, true)
-  else:
-    ctx.set_host(host, port, ssl)
+  if clientid != "":
+    ctx.clientid = clientid
+
+  ctx.set_host(host, port, ssl)
 
   if username != "" or password != "":
     ctx.set_auth(username, password)
@@ -34,6 +35,9 @@ proc nmqttSub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", use
     quit(0)
   elif willtopic != "" and willmsg != "":
     ctx.set_will(willtopic, willmsg, willqos, willretain)
+
+  # Set the verbosity
+  ctx.set_verbosity(verbosity)
 
   # Connec to broker
   await ctx.start()
