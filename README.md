@@ -1,12 +1,14 @@
 # Native Nim MQTT client library
 
 This is a hybrid package including a native Nim MQTT library and
-binaries for publishing and subscribing to a MQTT-broker.
+binaries for a MQTT broker, publisher and subscriber.
 
 * [Install](#Install)
 * [Binaries](#Binaries)
-  * [Publish](#Publish)
-  * [Subscribe](#Subscribe)
+  * [nmqtt](#nmqtt)
+  * [nmqtt_password](#nmqtt_password)
+  * [nmqtt_pub](#nmqtt_pub)
+  * [nmqtt_sub](#nmqtt_sub)
 * [Library](#Library)
   * [Examples](#Examples)
   * [Procs](#Procs)
@@ -27,11 +29,72 @@ $ nimble install
 
 # Binaries
 
-The package provides 2 binaries for publishing messages to a MQTT-broker and
-for subscribing to a MQTT-broker.
+The package provides 4 MQTT binaries:
+1) `nmqtt` -> Broker
+2) `nmqtt_password` -> Password utility for the broker
+3) `nmqtt_pub` -> MQTT publisher
+4) `nmqtt_sub` -> MQTT subscriber
 
-## Publish
-```bash
+
+## nmqtt
+```
+$ nmqtt --help
+nmqtt is a MQTT v3.1.1 broker
+
+USAGE
+  nmqtt [options]
+  nmqtt [-c /path/to/config.conf]
+  nmqtt [-h hostIP -p port]
+
+CONFIG
+  Use the configuration file for detailed settings,
+  such as SSL, adjusting keep alive timer, etc. or
+  specify options at the command line.
+
+  To add and delete users from the password file
+  please use nmqtt_password:
+    - nmqtt_password -a|-b|-d [options]
+
+OPTIONS
+  -?, --help          print this cligen-erated help
+  -c=, --config=      absolute path to the config file. Overrides all other options.
+  -h=, --host=        IP-address to serve the broker on.
+  -p=, --port=        network port to accept connecting from.
+  -v=, --verbosity=   verbosity from 0-3.
+  --max-conn=         max simultaneous connections. Defaults to no limit.
+  --clientid-maxlen=  max lenght of clientid. Defaults to 65535.
+  --clientid-spaces   allow spaces in clientid. Defaults to false.
+  --clientid-empty    allow empty clientid and assign random id. Defaults to false.
+  --client-kickold    kick old client, if new client has same clientid. Defaults to false.
+  --clientid-pass     pass clientid in payload {clientid:payload}. Defaults to false.
+  --password-file=    absolute path to the password file
+```
+_SSL is not supported_
+
+
+## nmqtt_password
+```
+$ nmqtt_password --help
+Add users and passwords to nmqtt's password file.
+
+USAGE
+  nmqtt_password -a {password_file.conf} {username}
+  nmqtt_password -b {password_file.conf} {username} {password}
+  nmqtt_password -d {password_file.conf} {username}
+
+CONFIG
+  Add or delete users from nmqtt password file.
+
+OPTIONS
+  -?, --help     print this cligen-erated help
+  -a, --adduser  add a new user to the password file.
+  -b, --batch    run in batch mode to allow passing passwords on the command line.
+  -d, --deluser  delete a user form the password file.
+```
+
+
+## nmqtt_pub
+```
 $ ./nmqtt_pub --help
 Publish MQTT messages to a MQTT-broker.
 
@@ -65,8 +128,8 @@ OPTIONS
 _`-verbose` not implemented yet_
 
 
-## Subscribe
-```bash
+## nmqtt_sub
+```
 $ ./nmqtt_sub --help
 Subscribe to a topic on a MQTT-broker.
 

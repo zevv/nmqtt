@@ -1,4 +1,5 @@
-test/connection
-test/subscribe
-test/publish
 test/tester
+nmqtt
+nmqtt_password
+nmqtt_pub
+nmqtt_sub
