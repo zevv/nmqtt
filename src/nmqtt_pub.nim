@@ -4,8 +4,17 @@ from os import getCurrentProcessId
 include "nmqtt.nim"
 
 
-proc nmqttPub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", username="", password="", topic, msg: string, qos=0, retain=false, repeat=0, repeatdelay=0, willtopic="", willmsg="", willqos=0, willretain=false, verbose=false) =
+proc handler() {.noconv.} =
+  ## Catch ctrl+c from user
+  echo ""
+  quit(0)
+
+
+proc nmqttPub(host="127.0.0.1", port=1883, ssl=false, clientid="", username="", password="", topic, msg: string, qos=0, retain=false, repeat=0, repeatdelay=0, willtopic="", willmsg="", willqos=0, willretain=false, verbosity=0) =
   ## CLI tool for publish
+  if verbosity >= 1:
+    echo "Running nmqtt_pub v" & nmqttVersion
+
   let ctx = newMqttCtx(if clientid != "": clientid else: "nmqttpub-" & $getCurrentProcessId())
   ctx.set_host(host, port, ssl)
 
@@ -18,6 +27,12 @@ proc nmqttPub(host="127.0.0.1", port: int=1883, ssl:bool=false, clientid="", use
     quit()
   elif willtopic != "" and willmsg != "":
     ctx.set_will(willtopic, willmsg, willqos, willretain)
+
+  # Set the verbosity
+  ctx.set_verbosity(verbosity)
+
+  # Control CTRL+c hook
+  setControlCHook(handler)
 
   # Connect to broker
   waitFor ctx.connect()
