@@ -71,7 +71,8 @@ when defined(broker):
     sequtils,
     times,
     random,
-    utils/passwords
+    utils/passwords,
+    utils/version
   from parsecfg import loadConfig, getSectionValue
   from os import fileExists
 

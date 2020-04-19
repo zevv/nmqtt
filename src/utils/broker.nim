@@ -78,9 +78,7 @@ proc showConf(mb: MqttBroker, configfile: string) =
   ## Show the config details
 
   echo """
-nmqtt_broker v$1
-
-Running nmqtt_broker - MQTT broker
+Running nmqtt v$1
 
 BROKER:
   Host:       $2
@@ -98,7 +96,7 @@ OPTIONS:
   Client kick old:       $12
   Number of passwords:   $13
 
-  """.format("x.x.x", mb.host, mb.port, "NOT IMPLEMENTED", now(), mb.verbosity,
+  """.format(nmqttVersion, mb.host, mb.port, mb.sslOn, now(), mb.verbosity,
               mb.maxConnections, mb.clientIdMaxLen, mb.spacesInClientId,
               mb.emptyClientId, mb.passClientId, mb.clientKickOld, mb.passwords.len()
             )
