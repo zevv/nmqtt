@@ -3,6 +3,8 @@ import cligen
 from os import getCurrentProcessId
 from strutils import split
 
+import utils/version
+
 include "nmqtt.nim"
 
 
@@ -67,7 +69,10 @@ proc nmqttSub(host="127.0.0.1", port=1883, ssl=false, clientid="", username="", 
 
 when isMainModule:
 
-  let topLvlUse = """${doc}
+  let topLvlUse = """nmqtt_sub is a MQTT client that will subscribe to a topic on a MQTT-broker.
+nmqtt_sub is based upon nmqtt version """ & nmqttVersion & """
+
+
 Usage:
   $command [options] -t {topic}
   $command [-h host -p port -u username -P password] -t {topic}
@@ -75,36 +80,42 @@ Usage:
 OPTIONS
 $options
 """
-  #clCfg.hTabCols = @[clOptKeys, clDflVal, clDescrip]
   clCfg.hTabCols = @[clOptKeys, clDescrip]
-  dispatch(nmqttSub,
+  dispatchGen(nmqttSub,
           doc="Subscribe to a topic on a MQTT-broker.",
           cmdName="nmqtt_sub",
           help={
             "host":         "IP-address of the broker. Defaults to 127.0.0.1",
             "port":         "network port to connect too. Defaults to 1883.",
-            "ssl":          "enable ssl. Auto-enabled on port 8883.",
-            "clientid":     "your connection ID. Defaults to nmqtt_pub_ appended with processID.",
+            "ssl":          "use ssl.",
+            "clientid":     "your connection ID. Defaults to nmqttsub- appended with processID.",
             "username":     "provide a username",
             "password":     "provide a password",
-            "topic":        "MQTT topic to publish to.",
+            "topic":        "MQTT topic to subscribe too. For multipe topics, separate them by comma.",
             "qos":          "quality of service level to use for all messages. Defaults to 0.",
             "keepalive":    "keep alive in seconds for this client. Defaults to 60.",
             "removeretained": "clear any retained messages on the topic",
             "willtopic":    "set the will's topic",
             "willmsg":      "set the will's message",
             "willqos":      "set the will's quality of service",
-            "willretain":   "set to retain the will message"
+            "willretain":   "set to retain the will message",
+            "verbosity":    "set the verbosity level from 0-2. Defaults to 0."
           },
           short={
             "password": 'P',
             "help": '?',
             "ssl": '\0',
+            "verbosity": 'v',
             "willtopic": '\0',
             "willmsg": '\0',
             "willqos": '\0',
             "willretain": '\0',
             "removeretained": '\0'
           },
-          usage=topLvlUse
+          usage=topLvlUse,
+          dispatchName="subscriber"
           )
+
+  cligenQuit subscriber(skipHelp=true)
+
+  runForever()
