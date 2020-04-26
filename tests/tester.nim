@@ -56,7 +56,7 @@ include "unsubscribe.nim"
 include "publish.nim"
 include "publish_qos.nim"
 include "ping.nim"
-include "utils.nim"
+include "tools.nim"
 include "willmsg.nim"          # Contains retained msgs
 include "publish_retained.nim" # Contains retained msgs
                                #
