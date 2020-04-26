@@ -1,5 +1,5 @@
 # Package
-version       = "1.0.1"
+version       = "1.0.2"
 author        = "zevv & ThomasTJdev"
 description   = "Native MQTT library and binaries for publishing, subscribing and broker"
 license       = "MIT"
@@ -21,14 +21,14 @@ task test, "Runs the test suite.":
   exec "nimble c -y -r tests/tester"
 
 
-after install:
+task setup, "Generate default nmqtt configuration file":
   var path: string
 
   echo "\nGenerate default nmqtt.conf? (y/N)"
   let genConf = readLineFromStdin()
   if genConf == "y" or genConf == "Y":
     let confPath = "/home/" & getEnv("USER") & "/.nmqtt"
-    echo "\nAbsolute path to nmqtt config folder. Default: " & confPath
+    echo "\nSpecify the absolute path to the nmqtt config folder.\nPress enter to use default path: " & confPath
 
     path = readLineFromStdin()
     if path == "":
@@ -38,25 +38,18 @@ after install:
       mkDir(path)
 
     cpFile("config/nmqtt.conf", path & "/nmqtt.conf")
-    echo "The brokers configuration has been saved at: " & path & "/nmqtt.conf"
 
-  echo """
+    echo """
+___________________________________________________________
 
-nmqtt v$1 has been installed.
+nmqtt v$1
 
+The brokers configuration has been saved at:
+  $2/nmqtt.conf
 
-LIBRARY:
-Access the nim-libary with an import statement in your code:
+You can now run the broker with:
+  nmqtt -c $2/nmqtt.conf
 
-  `import nmqtt`
+___________________________________________________________
 
-
-BINARIES:
-Access the binaries directly with the commands below. For help append `--help`.
-
-  nmqtt
-  nmqtt_password
-  nmqtt_pub
-  nmqtt_sub
-
-""".format(version)
+""".format(version, path)

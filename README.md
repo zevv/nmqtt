@@ -37,6 +37,9 @@ The package provides 4 MQTT binaries:
 
 
 ## nmqtt
+
+A default configuration file is provided in `config/nmqtt.conf`. You can copy and paste this file to a desired location, or run `nimble setup nmqtt` which will guide you through it.
+
 ```
 $ nmqtt --help
 nmqtt version 1.0.0

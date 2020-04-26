@@ -6,7 +6,7 @@ when not defined(test):
   echo "Please run with -d:test, exiting"
   quit()
 
-include ../src/nmqtt
+include "../nmqtt.nim"
 
 randomize()
 
