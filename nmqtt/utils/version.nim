@@ -3,7 +3,7 @@ from strutils import replace, splitLines, split, contains
 from os import `/`
 
 macro nimbleVersion(): void =
-  let n = staticRead(currentSourcePath().replace("/src/utils/version.nim") / "nmqtt.nimble")
+  let n = staticRead(currentSourcePath().replace("/nmqtt/utils/version.nim") / "nmqtt.nimble")
   var v: string
   for line in n.splitLines:
     let l = split(line, " = ")
