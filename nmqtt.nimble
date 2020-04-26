@@ -1,14 +1,13 @@
 # Package
-version       = "1.0.0"
+version       = "1.0.1"
 author        = "zevv & ThomasTJdev"
 description   = "Native MQTT library and binaries for publishing, subscribing and broker"
 license       = "MIT"
-srcDir        = "src"
+bin           = @["nmqtt/nmqtt", "nmqtt/nmqtt_password", "nmqtt/nmqtt_pub", "nmqtt/nmqtt_sub"]
 binDir        = "bin"
 installFiles  = @["nmqtt.nim"]
 installDirs   = @["config"]
-bin           = @["nmqtt", "nmqtt_password", "nmqtt_pub", "nmqtt_sub"]
-
+skipDirs      = @["tests", "nmqtt"]
 
 # Dependencies
 requires "nim >= 1.0.6"
@@ -19,7 +18,7 @@ from strutils import format
 
 
 task test, "Runs the test suite.":
-  exec "nimble c -y -r test/tester"
+  exec "nimble c -y -r tests/tester"
 
 
 after install:
@@ -53,7 +52,7 @@ Access the nim-libary with an import statement in your code:
 
 
 BINARIES:
-Access the binaries directly with. For help append `--help`.
+Access the binaries directly with the commands below. For help append `--help`.
 
   nmqtt
   nmqtt_password
