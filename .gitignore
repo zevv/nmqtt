@@ -1,5 +1,2 @@
-test/tester
-nmqtt
-nmqtt_password
-nmqtt_pub
-nmqtt_sub
+tests/tester
+bin
