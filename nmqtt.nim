@@ -15,8 +15,8 @@ when defined(broker):
     sequtils,
     times,
     random,
-    utils/passwords,
-    utils/version
+    nmqtt/utils/passwords,
+    nmqtt/utils/version
   from parsecfg import loadConfig, getSectionValue
   from os import fileExists
 
@@ -1191,4 +1191,4 @@ proc msgQueue*(ctx: MqttCtx): int =
 
 
 when defined(broker):
-  include "utils/broker.nim"
+  include "nmqtt/utils/broker.nim"

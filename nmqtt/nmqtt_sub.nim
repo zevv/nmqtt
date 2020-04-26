@@ -5,7 +5,7 @@ from strutils import split
 
 import utils/version
 
-include "nmqtt.nim"
+include "../nmqtt.nim"
 
 
 let ctx = newMqttCtx("nmqttsub-" & $getCurrentProcessId())
