@@ -712,9 +712,16 @@ proc onConnect(ctx: MqttCtx, pkt: Pkt) {.async.} =
     # Check password and username
     if mqttbroker.passwords.len() > 0:
       let pass = mqttbroker.passwords.getOrDefault(ctx.username)
-      if pass == "" or pass[0..59] != makePassword(ctx.password, pass[60..pass.len-1], pass[0..59]):
-        await denyConnect(ctx, ConnRefBadUserPwd)
-        return
+      when defined(Windows):
+        ## TODO: Windows is using MD5 for storing the password, which is not
+        ##       safe in any way.
+        if pass == "" or pass[0..31] != makePassword(ctx.password, pass[32..pass.len-1], ""):
+          await denyConnect(ctx, ConnRefBadUserPwd)
+          return
+      else:
+        if pass == "" or pass[0..59] != makePassword(ctx.password, pass[60..pass.len-1], pass[0..59]):
+          await denyConnect(ctx, ConnRefBadUserPwd)
+          return
 
     # 3.1.2.2 Protocol Level
     if ctx.proto != "MQTT":
@@ -1188,7 +1195,3 @@ proc msgQueue*(ctx: MqttCtx): int =
   ## You can use this to ensure, that all your of messages are sent, before
   ## exiting your program.
   result = ctx.workQueue.len()
-
-
-when defined(broker):
-  include "nmqtt/utils/broker.nim"

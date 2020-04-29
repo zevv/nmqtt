@@ -1,17 +1,19 @@
-import md5, bcrypt, random
+import md5, random
+
+when not defined(Windows):
+  import bcrypt
 
 
 var urandom: File
 let useUrandom = urandom.open("/dev/urandom")
 
 
-template makeSessionKey*(): string =
-  ## Creates a random key to be used to authorize a session.
-  bcrypt.hash(makeSalt(), genSalt(8))
-
 template makePassword*(password, salt: string, comparingTo = ""): string =
   ## Creates an MD5 hash by combining password and salt.
-  bcrypt.hash(getMD5(salt & getMD5(password)), if comparingTo != "": comparingTo else: genSalt(8))
+  when defined(Windows):
+    getMD5(salt & getMD5(password))
+  else:
+    bcrypt.hash(getMD5(salt & getMD5(password)), if comparingTo != "": comparingTo else: genSalt(8))
 
 proc makeSalt*(): string =
   ## Generate random salt. Uses cryptographically secure /dev/urandom

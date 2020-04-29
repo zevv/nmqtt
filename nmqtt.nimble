@@ -1,5 +1,5 @@
 # Package
-version       = "1.0.2"
+version       = "1.0.3"
 author        = "zevv & ThomasTJdev"
 description   = "Native MQTT library and binaries for publishing, subscribing and broker"
 license       = "MIT"
@@ -11,8 +11,10 @@ skipDirs      = @["tests", "nmqtt"]
 
 # Dependencies
 requires "nim >= 1.0.6"
-requires "bcrypt >= 0.2.1"
 requires "cligen >= 0.9.45"
+when not defined(Windows):
+  requires "bcrypt >= 0.2.1"
+
 
 from strutils import format
 
