@@ -57,6 +57,9 @@ proc nmqttPassword(adduser=false, batch=false, deluser=false, args: seq[string])
   ## Main handler
   echo "Running nmqtt_password v" & nmqttVersion
 
+  when defined(Windows):
+    echo "\nWARNING: On Windows passwords will only be hashed with MD5.\n"
+
   if args.len() == 0:
     echo "Error, missing parameters. Run again with --help."
     quit()
