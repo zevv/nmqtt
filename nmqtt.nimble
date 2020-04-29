@@ -1,5 +1,5 @@
 # Package
-version       = "1.0.2"
+version       = "1.0.3"
 author        = "zevv & ThomasTJdev"
 description   = "Native MQTT library and binaries for publishing, subscribing and broker"
 license       = "MIT"
