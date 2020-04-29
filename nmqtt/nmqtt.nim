@@ -3,10 +3,10 @@
 # --------------------
 #
 # This file contains the code for the MQTT broker. Broker specific procs
-# is defined within this file, while all base MQTT-code is included from
-# the main library file.
+# and CLI are defined within this file, while all base MQTT-code is included
+# from the main library file (`../nmqtt.nim`).
 #
-# The file is named the same as the library so when the binaries are
+# This file is named the same as the library file, so when the binaries are
 # generated, the brokers binary will be named `nmqtt`.
 #
 
