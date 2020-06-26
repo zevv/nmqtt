@@ -1046,6 +1046,7 @@ proc connectBroker(ctx: MqttCtx) {.async.} =
   try:
     ctx.s = await asyncnet.dial(ctx.host, ctx.port)
     if ctx.sslOn:
+      ctx.dbg "Using SSL"
       when defined(ssl):
         ctx.ssl = newContext(protSSLv23, CVerifyNone, ctx.sslCertFile, ctx.sslKeyFile)
         wrapConnectedSocket(ctx.ssl, ctx.s, handshakeAsClient)
@@ -1103,6 +1104,7 @@ proc set_host*(ctx: MqttCtx, host: string, port: int=1883, sslOn=false) =
   ## Set the MQTT host
   ctx.host = host
   ctx.port = Port(port)
+  ctx.sslOn = sslOn
 
 proc set_ssl_certificates*(ctx: MqttCtx, sslCertFile: string, sslKeyFile: string) =
   ctx.sslCertFile = sslCertFile
