@@ -253,7 +253,7 @@ ____
 ### set_ssl_certificates*
 
 ```nim
-proc set_ping_interval*(ctx: MqttCtx, sslCertFile: string, sslKeyFile: string) =
+proc set_ssl_certificates*(ctx: MqttCtx, sslCert: string, sslKey: string) =
 ```
 
 Sets the SSL Certificate and Key files to use Mutual TLS authentication
