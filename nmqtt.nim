@@ -25,6 +25,8 @@ type
     host: string
     port: Port
     sslOn: bool
+    sslCert: string
+    sslKey: string
     verbosity: int
     beenConnected: bool
     username: string
@@ -1045,7 +1047,7 @@ proc connectBroker(ctx: MqttCtx) {.async.} =
     ctx.s = await asyncnet.dial(ctx.host, ctx.port)
     if ctx.sslOn:
       when defined(ssl):
-        ctx.ssl = newContext(protSSLv23, CVerifyNone)
+        ctx.ssl = newContext(protSSLv23, CVerifyNone, ctx.sslCert, ctx.sslKey)
         wrapConnectedSocket(ctx.ssl, ctx.s, handshakeAsClient)
       else:
         ctx.wrn "Requested SSL session but ssl is not enabled"
@@ -1102,6 +1104,12 @@ proc set_host*(ctx: MqttCtx, host: string, port: int=1883, sslOn=false) =
   ctx.host = host
   ctx.port = Port(port)
   ctx.sslOn = sslOn
+
+proc set_ssl_certificates*(ctx: MqttCtx, sslCert: string, sslKey: string) =
+  # Sets the SSL Certificate and Key to use when connecting to the remote broker
+  # for mutal TLS authentication
+  ctx.sslCert = sslCert
+  ctx.sslKey = sslKey
 
 proc set_auth*(ctx: MqttCtx, username: string, password: string) =
   ## Set the authentication for the host.

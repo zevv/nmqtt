@@ -178,6 +178,7 @@ let ctx = newMqttCtx("nmqttClient")
 ctx.set_host("test.mosquitto.org", 1883)
 #ctx.set_auth("username", "password")
 #ctx.set_ping_interval(30)
+#ctx.set_ssl_certificates("cert.crt", "private.key")
 
 proc mqttSub() {.async.} =
   await ctx.start()
@@ -247,6 +248,15 @@ proc set_ping_interval*(ctx: MqttCtx, txInterval: int) =
 
 Set the clients ping interval in seconds. Default is 60 seconds.
 
+____
+
+### set_ssl_certificates*
+
+```nim
+proc set_ssl_certificates*(ctx: MqttCtx, sslCert: string, sslKey: string) =
+```
+
+Sets the SSL Certificate and Key files to use Mutual TLS authentication
 
 ____
 
