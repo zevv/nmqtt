@@ -187,7 +187,7 @@ proc mqttSub() {.async.} =
 
   await ctx.subscribe("nmqtt", 2, on_data)
 
-asyncCheck mqttSub
+asyncCheck mqttSub()
 runForever()
 ```
 
