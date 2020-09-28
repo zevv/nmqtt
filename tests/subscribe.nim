@@ -170,26 +170,25 @@ suite "test suite for subscribe":
     waitFor conn()
 
 
-  test "subscribe to #":
-    let (_, msg) = tdata("subscribe to #")
+  test "subscribe to test/#":
+    let (_, msg) = tdata("subscribe to test/#")
 
     proc conn() {.async.} =
       var msgCount: int
       proc on_data_sub_all(topic: string, message: string) =
         msgCount += 1
 
-      await ctxListen.subscribe("#", 0, on_data_sub_all)
+      await ctxListen.subscribe("test/#", 0, on_data_sub_all)
       await sleepAsync 500
-      await ctxMain.publish("random1", msg, 0)
-      await ctxMain.publish("random2", msg, 0)
-      await ctxMain.publish("random3", msg, 0)
+      await ctxMain.publish("test/random1", msg, 0)
+      await ctxMain.publish("test/random2", msg, 0)
+      await ctxMain.publish("test/random3", msg, 0)
       await sleepAsync 500
-      await ctxListen.unsubscribe("#")
+      await ctxListen.unsubscribe("test/#")
       await sleepAsync 500
       check(msgCount == 3)
 
     waitFor conn()
-
 
   test "stay subscribed after disconnect with reconnect":
     let (tpc, msg) = tdata("stay subscribed after disconnect with reconnect")

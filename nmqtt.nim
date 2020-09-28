@@ -836,7 +836,7 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
 
   when not defined(broker):
     for top, cb in ctx.pubCallbacks:
-      if top == topic or top == "#": cb.cb(topic, message)
+      if top == topic or top.endsWith("#"): cb.cb(topic, message)
 
   if qos == 1:
     ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 1, typ: PubAck)
