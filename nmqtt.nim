@@ -836,8 +836,9 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
 
   when not defined(broker):
     for top, cb in ctx.pubCallbacks:
-      if top == topic: cb.cb(topic, message)
-      if top.endsWith("#"):
+      if top == topic or top == "#":
+        cb.cb(topic, message)
+      if top.endsWith("/#"):
         var topicw = top
         topicw.removeSuffix("#")
         if topic.contains(topicw):
