@@ -847,6 +847,15 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
         topicw.removeSuffix("#")
         if topic.contains(topicw):
           cb.cb(topic, message)
+      if top.contains("+"):
+        var topelem = split(top, '/')
+        if len(topelem) == count(topic, '/') + 1:
+          var i = 0
+          for e in split(topic, '/'):
+            if topelem[i] != "+" and e != topelem[i]: break
+            i = i+1
+          if i == len(topelem):
+            cb.cb(topic, message)
 
   if qos == 1:
     ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 1, typ: PubAck)
