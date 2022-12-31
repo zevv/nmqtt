@@ -839,6 +839,10 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
       if top == topic or top == "#":
         cb.cb(topic, message)
       if top.endsWith("/#"):
+        # the multi-level wildcard can represent zero levels.
+        if topic == top[0 .. ^3]:
+          cb.cb(topic, message)
+          continue
         var topicw = top
         topicw.removeSuffix("#")
         if topic.contains(topicw):

@@ -201,11 +201,12 @@ suite "test suite for subscribe":
       await sleepAsync 500
       await ctxMain.publish("test/random1", msg, 0)
       await ctxMain.publish("second/random2", msg, 0)
+      await ctxMain.publish("test", msg, 0)
       await ctxMain.publish("test/random3", msg, 0)
       await sleepAsync 500
       await ctxListen.unsubscribe("test/#")
       await sleepAsync 500
-      check(msgCount == 2)
+      check(msgCount == 3)
 
     waitFor conn()
 
