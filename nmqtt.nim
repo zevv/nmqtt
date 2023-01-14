@@ -839,10 +839,23 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
       if top == topic or top == "#":
         cb.cb(topic, message)
       if top.endsWith("/#"):
+        # the multi-level wildcard can represent zero levels.
+        if topic == top[0 .. ^3]:
+          cb.cb(topic, message)
+          continue
         var topicw = top
         topicw.removeSuffix("#")
         if topic.contains(topicw):
           cb.cb(topic, message)
+      if top.contains("+"):
+        var topelem = split(top, '/')
+        if len(topelem) == count(topic, '/') + 1:
+          var i = 0
+          for e in split(topic, '/'):
+            if topelem[i] != "+" and e != topelem[i]: break
+            i = i+1
+          if i == len(topelem):
+            cb.cb(topic, message)
 
   if qos == 1:
     ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 1, typ: PubAck)

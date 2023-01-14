@@ -201,9 +201,53 @@ suite "test suite for subscribe":
       await sleepAsync 500
       await ctxMain.publish("test/random1", msg, 0)
       await ctxMain.publish("second/random2", msg, 0)
+      await ctxMain.publish("test", msg, 0)
       await ctxMain.publish("test/random3", msg, 0)
       await sleepAsync 500
       await ctxListen.unsubscribe("test/#")
+      await sleepAsync 500
+      check(msgCount == 3)
+
+    waitFor conn()
+
+  test "subscribe to test/+":
+    let (_, msg) = tdata("subscribe to test/+")
+
+    proc conn() {.async.} =
+      var msgCount: int
+      proc on_data_sub_wild(topic: string, message: string) =
+        msgCount += 1
+
+      await ctxListen.subscribe("test/+", 0, on_data_sub_wild)
+      await sleepAsync 500
+      await ctxMain.publish("test/random1", msg, 0)
+      await ctxMain.publish("second/random2", msg, 0)
+      await ctxMain.publish("test", msg, 0)
+      await ctxMain.publish("test/random3", msg, 0)
+      await sleepAsync 500
+      await ctxListen.unsubscribe("test/+")
+      await sleepAsync 500
+      check(msgCount == 2)
+
+    waitFor conn()
+
+  test "subscribe to test/+/test":
+    let (_, msg) = tdata("subscribe to test/+/test")
+
+    proc conn() {.async.} =
+      var msgCount: int
+      proc on_data_sub_wild(topic: string, message: string) =
+        msgCount += 1
+
+      await ctxListen.subscribe("test/+/data", 0, on_data_sub_wild)
+      await sleepAsync 500
+      await ctxMain.publish("test/random1/data", msg, 0)
+      await ctxMain.publish("second/random2/data", msg, 0)
+      await ctxMain.publish("test/random3", msg, 0)
+      await ctxMain.publish("test/random4/data", msg, 0)
+      await ctxMain.publish("test/random5/data/random6", msg, 0)
+      await sleepAsync 500
+      await ctxListen.unsubscribe("test/+/data")
       await sleepAsync 500
       check(msgCount == 2)
 
