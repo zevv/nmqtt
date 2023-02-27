@@ -1194,14 +1194,39 @@ proc publish*(ctx: MqttCtx, topic: string, message: string, qos=0, retain=false)
 proc subscribe*(ctx: MqttCtx, topic: string, qos: int, callback: PubCallback.cb): Future[void] =
   ## Subscribe to a topic.
   ##
+  ## Shared subscription topic filter must follow the format: $share/{ShareName}/{filter}
+  ## 
   ## Access the callback with:
   ## .. code-block::nim
   ##    proc callbackName(topic: string, message: string) =
   ##      echo "Topic: ", topic, ": ", message
-  let msgId = ctx.nextMsgId()
-  ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, qos: qos, typ: Subscribe)
-  ctx.pubCallbacks[topic] = PubCallback(cb: callback, qos: qos)
-  result = ctx.work()
+  proc verify_shared_subscription(topic: string): bool =
+    type InvalidSharedSubscriptionTopicFilter = object of ValueError
+    if topic.split("/", 2)[1].len == 0:
+      raise newException(InvalidSharedSubscriptionTopicFilter, "The ShareName must be at least 1 character long.")
+    if topic.split("/", 2)[2].len == 0:
+      raise newException(InvalidSharedSubscriptionTopicFilter, "The filter must be at least 1 character long.")
+    if count(topic, "/") < 2:
+      raise newException(InvalidSharedSubscriptionTopicFilter, "The ShareName must end with a / character.")
+    if "#" in topic.split("/", 2)[1] or "+" in topic.split("/", 2)[1]:
+      raise newException(InvalidSharedSubscriptionTopicFilter, "The ShareName must not include the characters + and #")
+    return true
+
+  var verification: bool = true
+
+  if topic.startsWith("$share"):
+    verification = verify_shared_subscription(topic)
+
+  if verification:
+    let msgId = ctx.nextMsgId()
+    ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, qos: qos, typ: Subscribe)
+    if topic.startsWith("$share"):
+      # get the actual topic to set the pubCallback
+      ctx.pubCallbacks[topic.split("/", 2)[2]] = PubCallback(cb: callback, qos: qos)
+    else:
+      # not a shared subscription
+      ctx.pubCallbacks[topic] = PubCallback(cb: callback, qos: qos)
+    result = ctx.work()
 
 proc unsubscribe*(ctx: MqttCtx, topic: string): Future[void] =
   ## Unsubscribe to a topic.
