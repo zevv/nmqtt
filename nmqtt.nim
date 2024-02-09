@@ -1209,6 +1209,11 @@ proc unsubscribe*(ctx: MqttCtx, topic: string): Future[void] =
   ctx.workQueue[msgId] = Work(wk: SubWork, msgId: msgId, topic: topic, typ: Unsubscribe)
   result = ctx.work()
 
+proc isErrored*(ctx: MqttCtx): bool =
+  ## Returns true, if the context is in an error state
+  if ctx.state == Error:
+    result = true
+
 proc isConnected*(ctx: MqttCtx): bool =
   ## Returns true, if the client is connected to the broker.
   if ctx.state == Connected:
