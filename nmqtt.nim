@@ -1062,36 +1062,40 @@ proc connectBroker(ctx: MqttCtx) {.async.} =
 
   if ctx.verbosity >= 1:
     ctx.dbg "Connecting to " & ctx.host & ":" & $ctx.port
-  try:
-    ctx.s = await asyncnet.dial(ctx.host, ctx.port)
-    if ctx.sslOn:
-      when defined(ssl):
-        ctx.ssl = newContext(protSSLv23, CVerifyNone, ctx.sslCert, ctx.sslKey)
-        wrapConnectedSocket(ctx.ssl, ctx.s, handshakeAsClient)
-      else:
-        ctx.wrn "Requested SSL session but ssl is not enabled"
-        await ctx.close("SSL not enabled")
-        ctx.state = Error
-    let ok = await ctx.sendConnect()
-    if ok:
-      asyncCheck ctx.runRx()
-      asyncCheck ctx.runPing()
-  except OSError as e:
-    if ctx.verbosity >= 1 or not ctx.beenConnected:
-      ctx.dbg "Error connecting to " & ctx.host
-    if ctx.verbosity >= 2:
-      echo e.msg
-    ctx.state = Error
+
+  ctx.state = Error # set to Connecting by sendConnect
+
+  ctx.s = await asyncnet.dial(ctx.host, ctx.port)
+  if ctx.sslOn:
+    when defined(ssl):
+      ctx.ssl = newContext(protSSLv23, CVerifyNone, ctx.sslCert, ctx.sslKey)
+      wrapConnectedSocket(ctx.ssl, ctx.s, handshakeAsClient)
+    else:
+      ctx.wrn "Requested SSL session but ssl is not enabled"
+      await ctx.close("SSL not enabled")
+
+  let ok = await ctx.sendConnect()
+  if ok:
+    asyncCheck ctx.runRx()
+    asyncCheck ctx.runPing()
+
 
 proc runConnect(ctx: MqttCtx) {.async.} =
   ## Auto-connect and reconnect to broker
-  await ctx.connectBroker()
 
   while true:
     if ctx.state == Disabled:
       break
     elif ctx.state in [Disconnected, Error]:
-      await ctx.connectBroker()
+      try:
+        await ctx.connectBroker()
+      except OSError as e:
+        if ctx.verbosity >= 1 or not ctx.beenConnected:
+          ctx.dbg "Error connecting to " & ctx.host
+        if ctx.verbosity >= 2:
+          echo e.msg
+        ctx.state = Error
+
       # If the client has been disconnect, it is necessary to tell the broker,
       # that we still want to be Subscribed. PubCallbacks still holds the
       # callbacks, but we need to re-Subscribe to the broker.
@@ -1111,7 +1115,7 @@ proc runConnect(ctx: MqttCtx) {.async.} =
 
 proc newMqttCtx*(clientId: string): MqttCtx =
   ## Initiate a new MQTT client
-  MqttCtx(clientId: clientId)
+  MqttCtx(clientId: clientId, state: Disconnected)
 
 proc set_ping_interval*(ctx: MqttCtx, txInterval: int = 60) =
   ## Set the clients ping interval in seconds. Default is 60 seconds.
