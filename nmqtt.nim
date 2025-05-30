@@ -835,18 +835,19 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
         verbose("Retained   ", mqttbroker.retained)
 
   when not defined(broker):
+    var callbacks: seq[PubCallback]
     for top, cb in ctx.pubCallbacks:
       if top == topic or top == "#":
-        cb.cb(topic, message)
+        callbacks.add(cb)
       if top.endsWith("/#"):
         # the multi-level wildcard can represent zero levels.
         if topic == top[0 .. ^3]:
-          cb.cb(topic, message)
+          callbacks.add(cb)
           continue
         var topicw = top
         topicw.removeSuffix("#")
         if topic.contains(topicw):
-          cb.cb(topic, message)
+          callbacks.add(cb)
       if top.contains("+"):
         var topelem = split(top, '/')
         if len(topelem) == count(topic, '/') + 1:
@@ -855,7 +856,9 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
             if topelem[i] != "+" and e != topelem[i]: break
             i = i+1
           if i == len(topelem):
-            cb.cb(topic, message)
+            callbacks.add(cb)
+    for cb in callbacks:
+      cb.cb(topic, message)
 
   if qos == 1:
     ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 1, typ: PubAck)
