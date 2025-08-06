@@ -16,8 +16,10 @@ jobs:
           - windows-latest
           - macOS-latest
         version:
-          - binary:stable
-          - binary:1.6.8
+          - stable
+          - 1.6.8
+          # - binary:stable
+          # - binary:1.6.8
 
     steps:
       - uses: actions/checkout@v4
