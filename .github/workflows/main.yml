@@ -17,9 +17,9 @@ jobs:
           - macOS-latest
         version:
           - stable
-          - 1.6.8
+          - 1.6.18
           # - binary:stable
-          # - binary:1.6.8
+          # - binary:1.6.18
 
     steps:
       - uses: actions/checkout@v4
