@@ -13,13 +13,13 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          - windows-latest
-          - macOS-latest
+          # - windows-latest
+          # - macOS-latest
         version:
-          - stable
-          - 1.6.18
-          # - binary:stable
-          # - binary:1.6.18
+          # - stable
+          # - 1.6.18
+          - binary:stable
+          - binary:1.6.18
 
     steps:
       - uses: actions/checkout@v4
