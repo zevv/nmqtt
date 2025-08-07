@@ -5,6 +5,7 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -13,28 +14,69 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          - windows-latest
-          - macOS-latest
+          # - windows-latest
+          # - macOS-latest
         version:
-          - stable
+          # - stable
+          # - 1.6.18
+          - binary:stable
+          - binary:1.6.18
 
     steps:
-    - uses: actions/checkout@v1
-    - uses: jiro4989/setup-nim-action@master
-      with:
-        nim-version: ${{ matrix.version }}
+      - uses: actions/checkout@v4
 
-    - name: Print Nim version
-      run: nim -v
 
-    - name: Print Nimble version
-      run: nimble -v
+      #
+      # Nim
+      #
+      - name: Cache Nim binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            nimdir
+            ~/.nimble
+          key: "nim-${{ matrix.version }}-${{ matrix.os }}"
 
-    - name: Nimble Refresh
-      run: nimble -y refresh
+      - name: Check for cached Nim binaries
+        id: nim-binaries-cache
+        run: |
+          if [ -f "nimdir/bin/nim" ]; then
+            echo "found=true" >> $GITHUB_OUTPUT
+          else
+            echo "found=false" >> $GITHUB_OUTPUT
+          fi
 
-    - name: Nimble Install dependencies
-      run: nimble -y install --depsOnly
+      - name: Install Nim (if not cached)
+        if: steps.nim-binaries-cache.outputs.found == 'false'
+        uses: iffy/install-nim@v5
+        with:
+          version: ${{ matrix.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build binaries
-      run: nimble build -d:release
+      - name: Add cached Nim to PATH
+        if: steps.nim-binaries-cache.outputs.found == 'true'
+        run: |
+          echo "${{ github.workspace }}/nimdir/bin" >> $GITHUB_PATH
+          echo "$HOME/.nimble/bin" >> $GITHUB_PATH
+
+
+      #
+      # Nim
+      #
+      - name: Print Nim version
+        run: |
+          nim -v
+
+      - name: Print Nimble version
+        run: |
+          nimble -v
+
+      - name: Nimble Refresh
+        run: nimble -y refresh
+
+      - name: Nimble Install dependencies
+        run: nimble -y install --depsOnly
+
+      - name: Build binaries
+        run: nimble build -d:release
