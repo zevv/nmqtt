@@ -132,10 +132,12 @@ OPTIONS:
   ClientID in payload:   $11
   Client kick old:       $12
   Number of passwords:   $13
+  ACL loaded:            $14
 
   """.format(nmqttVersion, mb.host, mb.port, mb.sslOn, now(), mb.verbosity,
               mb.maxConnections, mb.clientIdMaxLen, mb.spacesInClientId,
-              mb.emptyClientId, mb.passClientId, mb.clientKickOld, mb.passwords.len()
+              mb.emptyClientId, mb.passClientId, mb.clientKickOld, mb.passwords.len(),
+              mb.acl.loaded
             )
 
 
@@ -194,6 +196,16 @@ proc loadConf(mb: MqttBroker, config: string) =
     let passwordFile = dict.getSectionValue("","password_file")
     loadPasswords(passwordFile)
 
+  # Load ACL file if specified
+  let aclFile = dict.getSectionValue("","acl_file")
+  if aclFile != "":
+    if not fileExists(aclFile):
+      echo "\nACL file does not exist..\n - " & aclFile
+      quit()
+    mqttbroker.acl.loadAclFile(aclFile)
+    if mqttbroker.verbosity >= 1:
+      echo "ACL loaded from: " & aclFile
+
 
 proc handler() {.noconv.} =
   ## Catch ctrl+c from user
@@ -206,6 +218,7 @@ proc handler() {.noconv.} =
 proc nmqttBroker(config="", host="127.0.0.1", port=1883, verbosity=0, max_conn=0,
                   clientid_maxlen=60, clientid_spaces=false, clientid_empty=false,
                   client_kickold=false, clientid_pass=false, password_file="",
+                  acl_file="",
                   ssl=false, ssl_cert="", ssl_key=""
                 ) {.async.} =
   ## CLI tool for a MQTT broker
@@ -225,6 +238,12 @@ proc nmqttBroker(config="", host="127.0.0.1", port=1883, verbosity=0, max_conn=0
 
     if password_file != "":
       loadPasswords(password_file)
+
+    if acl_file != "":
+      if not fileExists(acl_file):
+        echo "\nACL file does not exist..\n - " & acl_file
+        quit()
+      mqttbroker.acl.loadAclFile(acl_file)
 
     if ssl:
       mqttbroker.sslOn   = true
@@ -282,6 +301,7 @@ $options
             "client-kickold":   "kick old client, if new client has same clientid. Defaults to false.",
             "clientid-pass":    "pass clientid in payload {clientid:payload}. Defaults to false.",
             "password-file":    "absolute path to the password file",
+            "acl-file":         "absolute path to the ACL file (Mosquitto-compatible format)",
             "ssl":              "activate ssl for the broker - requires --ssl-cert and --ssl-key.",
             "ssl-cert":         "absolute path to the ssl certificate.",
             "ssl-key":          "absolute path to the ssl key."
@@ -289,6 +309,7 @@ $options
           short={
             "help": '?',
             "max-conn": '\0',
+            "acl-file": '\0',
             "ssl": '\0',
             "ssl-cert": '\0',
             "ssl-key": '\0'

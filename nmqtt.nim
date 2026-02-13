@@ -16,7 +16,9 @@ when defined(broker):
     times,
     random,
     nmqtt/utils/passwords,
-    nmqtt/utils/version
+    nmqtt/utils/version,
+    nmqtt/utils/acl,
+    nmqtt/utils/trie
   from parsecfg import loadConfig, getSectionValue
   from os import fileExists
 
@@ -142,6 +144,7 @@ when defined(broker):
       connections: Table[string, MqttCtx]
       retained: Table[string, RetainedMsg] # Topic, RetaindMsg
       subscribers: Table[string, seq[MqttCtx]]
+      subTrie: TopicTrie  # Trie index for O(depth) subscription matching
       version: uint8
       clientIdMaxLen: int
       clientKickOld: bool
@@ -150,6 +153,7 @@ when defined(broker):
       passClientId: bool
       maxConnections: int
       passwords: Table[string, string]
+      acl: AclStore
 
     RetainedMsg = object
       msg: string
@@ -159,7 +163,7 @@ when defined(broker):
 
 when defined(broker):
   var
-    mqttbroker = MqttBroker()
+    mqttbroker = MqttBroker(acl: newAclStore(), subTrie: newTopicTrie())
     r = initRand(toInt(epochTime()))
 
 
@@ -289,6 +293,8 @@ when defined(broker):
         mqttbroker.subscribers[topic].insert(ctx)
       else:
         mqttbroker.subscribers[topic] = @[ctx]
+        # First subscriber on this filter, add to the trie index
+        mqttbroker.subTrie.subscribe(topic)
     except:
       wrn("Crash when adding a new subcriber")
 
@@ -298,6 +304,9 @@ when defined(broker):
     try:
       if mqttbroker.subscribers.hasKey(topic):
         mqttbroker.subscribers[topic] = filter(mqttbroker.subscribers[topic], proc(x: MqttCtx): bool = x != ctx)
+        if mqttbroker.subscribers[topic].len() == 0:
+          mqttbroker.subscribers.del(topic)
+          mqttbroker.subTrie.unsubscribe(topic)
     except:
       wrn("Crash when removing subscriber with specific topic")
 
@@ -314,6 +323,7 @@ when defined(broker):
 
     for t in delTop:
       mqttbroker.subscribers.del(t)
+      mqttbroker.subTrie.unsubscribe(t)
 
 when defined(broker):
   proc qosAlign(qP, qS: uint8): uint8 =
@@ -641,20 +651,22 @@ when defined(broker):
         await c.work()
 
 when defined(broker):
-  proc publishToSubscribers(seqctx: seq[MqttCtx], pkt: Pkt, topic, message: string, qos: uint8, retain: bool, senderId: string) {.async.} =
-    ## Publish async to clients
+  proc publishToSubscribers(seqctx: seq[MqttCtx], pkt: Pkt, subFilter, pubTopic, message: string, qos: uint8, retain: bool, senderId: string) {.async.} =
+    ## Publish async to clients.
+    ## `subFilter` is the subscription key (e.g. "topic/subtopic/#") for QoS lookup.
+    ## `pubTopic` is the actual published topic (e.g. "topic/subtopic/specific") sent to the client.
     for c in seqctx:
       if c.state != Connected:
-        asyncCheck removeSubscriber(c, topic)
+        asyncCheck removeSubscriber(c, subFilter)
         continue
       let
         msgId = c.nextMsgId()
-        qosSub = qosAlign(qos, c.subscribed[topic])
+        qosSub = qosAlign(qos, c.subscribed[subFilter])
 
       if mqttbroker.passClientId:
-        c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qosSub, retain: retain, message: senderId & ":" & message, typ: Publish)
+        c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: pubTopic, qos: qosSub, retain: retain, message: senderId & ":" & message, typ: Publish)
       else:
-        c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: topic, qos: qosSub, retain: retain, message: message, typ: Publish)
+        c.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, topic: pubTopic, qos: qosSub, retain: retain, message: message, typ: Publish)
       await c.work()
 
 when defined(broker):
@@ -810,12 +822,25 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
   (message, offset) = pkt.getstring(offset, false)
 
   when defined(broker):
-    # Send message to all subscribers on "#"
-    if mqttbroker.subscribers.hasKey("#"):
-      await publishToSubscribers(mqttbroker.subscribers["#"], pkt, "#", message, qos, retain, ctx.clientid)
-    # Send message to all subscribers on _the topic_
-    if mqttbroker.subscribers.hasKey(topic):
-      await publishToSubscribers(mqttbroker.subscribers[topic], pkt, topic, message, qos, retain, ctx.clientid)
+    # Check ACL: does the publishing client have write access?
+    if not mqttbroker.acl.checkPublish(ctx.username, ctx.clientId, topic):
+      if mqttbroker.verbosity >= 1:
+        verbose("ACL         >> " & ctx.clientId & " denied publish to " & topic)
+      # Per MQTT v3.1.1, the broker silently drops the message but still
+      # completes the QoS handshake so the client doesn't stall.
+      if qos == 1:
+        ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 1, typ: PubAck)
+        await ctx.work()
+      elif qos == 2:
+        ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 2, typ: PubRec)
+        await ctx.work()
+      return
+
+    # Route the published message to all matching subscribers.
+    # Uses the trie index for O(topic_depth) matching instead of O(n) scan.
+    for subFilter in mqttbroker.subTrie.matchingFilters(topic):
+      if mqttbroker.subscribers.hasKey(subFilter):
+        await publishToSubscribers(mqttbroker.subscribers[subFilter], pkt, subFilter, topic, message, qos, retain, ctx.clientid)
 
     if mqttbroker.verbosity >= 1:
       verbose("Client      >> " & ctx.clientId & " has published a message")
@@ -869,36 +894,44 @@ proc onPublish(ctx: MqttCtx, pkt: Pkt) {.async.} =
 
 proc onPubAck(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
-  assert msgId in ctx.workQueue
-  assert ctx.workQueue[msgId].wk == PubWork
-  assert ctx.workQueue[msgId].state == WorkSent
-  assert ctx.workQueue[msgId].qos == 1
+  if msgId notin ctx.workQueue:
+    ctx.dmp "PubAck for unknown msgId: " & $msgId
+    return
+  if ctx.workQueue[msgId].wk != PubWork or ctx.workQueue[msgId].qos != 1:
+    ctx.dmp "PubAck unexpected state for msgId: " & $msgId
+    return
   ctx.workQueue.del msgId
 
 proc onPubRec(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
-  assert msgId in ctx.workQueue
-  assert ctx.workQueue[msgId].wk == PubWork
-  assert ctx.workQueue[msgId].state == WorkSent
-  assert ctx.workQueue[msgId].qos == 2
+  if msgId notin ctx.workQueue:
+    ctx.dmp "PubRec for unknown msgId: " & $msgId
+    return
+  if ctx.workQueue[msgId].wk != PubWork or ctx.workQueue[msgId].qos != 2:
+    ctx.dmp "PubRec unexpected state for msgId: " & $msgId
+    return
   ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 2, typ: PubRel)
   await ctx.work()
 
 proc onPubRel(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
-  assert msgId in ctx.workQueue
-  assert ctx.workQueue[msgId].wk == PubWork
-  assert ctx.workQueue[msgId].state == WorkSent
-  assert ctx.workQueue[msgId].qos == 2
+  if msgId notin ctx.workQueue:
+    ctx.dmp "PubRel for unknown msgId: " & $msgId
+    return
+  if ctx.workQueue[msgId].wk != PubWork or ctx.workQueue[msgId].qos != 2:
+    ctx.dmp "PubRel unexpected state for msgId: " & $msgId
+    return
   ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 2, typ: PubComp)
   await ctx.work()
 
 proc onPubComp(ctx: MqttCtx, pkt: Pkt) {.async.} =
   let (msgId, _) = pkt.getu16(0)
-  assert msgId in ctx.workQueue
-  assert ctx.workQueue[msgId].wk == PubWork
-  assert ctx.workQueue[msgId].state == WorkSent
-  assert ctx.workQueue[msgId].qos == 2
+  if msgId notin ctx.workQueue:
+    ctx.dmp "PubComp for unknown msgId: " & $msgId
+    return
+  if ctx.workQueue[msgId].wk != PubWork or ctx.workQueue[msgId].qos != 2:
+    ctx.dmp "PubComp unexpected state for msgId: " & $msgId
+    return
   ctx.workQueue.del msgId
 
 #when defined(broker):
@@ -920,6 +953,15 @@ proc onSubscribe(ctx: MqttCtx, pkt: Pkt) {.async.} =
       (nextLen, offset) = pkt.getu16(offset)
       (topic, offset)   = pkt.getstring(offset, parseInt($nextLen))
       (qos, offset)     = pkt.getu8(offset)
+
+      # Check ACL: does the client have read access for this topic?
+      if not mqttbroker.acl.checkSubscribe(ctx.username, ctx.clientId, topic):
+        if mqttbroker.verbosity >= 1:
+          verbose("ACL         >> " & ctx.clientId & " denied subscribe to " & topic)
+        # Send SubAck with failure return code (0x80) per MQTT v3.1.1 spec
+        ctx.workQueue[msgId] = Work(wk: PubWork, msgId: msgId, state: WorkNew, qos: 0, typ: SubAck)
+        await ctx.work()
+        return
 
       ctx.subscribed[topic] = qos
       await addSubscriber(ctx, topic)
