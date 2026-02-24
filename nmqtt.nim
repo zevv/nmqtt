@@ -39,6 +39,7 @@ type
     workQueue: OrderedTable[MsgId, Work]
     pubCallbacks: Table[string, PubCallback]
     inWork: bool
+    isPending: bool
     keepAlive: uint16
     willFlag: bool
     willQoS: uint8
@@ -588,47 +589,53 @@ proc sendWork(ctx: MqttCtx, work: Work): Future[bool] =
 
 proc work(ctx: MqttCtx) {.async.} =
   if ctx.inWork:
+    ctx.isPending = true
     return
   ctx.inWork = true
-  if ctx.state == Connected:
-    var delWork: seq[MsgId]
-    let workQueue = ctx.workQueue # TODO: We need to copy the workQueue, otherwise
-                                  # we can hit: `the length of the table changed
-                                  # while iterating over it`
-    for msgId, work in workQueue:
+  try:
+    if ctx.state == Connected:
+      var delWork: seq[MsgId]
+      var workQueue = newOrderedTable[MsgId, Work](ctx.workQueue.len)
+      for id, work in ctx.workQueue.pairs:
+        workQueue[id] = work
+      for msgId, work in workQueue:
 
-      #when defined(broker):
-      if work.typ in [ConnAck, SubAck, UnsubAck, PingResp]:
-        if await ctx.sendWork(work):
-          delWork.add msgId
-          continue
-
-      if work.wk == PubWork and work.state == WorkNew:
-        if work.typ == Publish and work.qos == 0:
-          if await ctx.sendWork(work): delWork.add msgId
-
-        elif work.typ == PubAck and work.qos == 1:
-          if await ctx.sendWork(work): delWork.add msgId
-
-        elif work.typ == PubComp and work.qos == 2:
-          if await ctx.sendWork(work): delWork.add msgId
-
-        else:
-          if await ctx.sendWork(work): work.state = WorkSent
-
-      #when not defined(broker):
-      elif work.wk == SubWork and work.state == WorkNew:
-        if work.typ == Subscribe:
-          if await ctx.sendWork(work): work.state = WorkSent
-
-        elif work.typ == Unsubscribe:
+        #when defined(broker):
+        if work.typ in [ConnAck, SubAck, UnsubAck, PingResp]:
           if await ctx.sendWork(work):
-            work.state = WorkSent
-            ctx.pubCallbacks.del work.topic
+            delWork.add msgId
+            continue
 
-    for msgId in delWork:
-      ctx.workQueue.del msgId
-  ctx.inWork = false
+        if work.wk == PubWork and work.state == WorkNew:
+          if work.typ == Publish and work.qos == 0:
+            if await ctx.sendWork(work): delWork.add msgId
+
+          elif work.typ == PubAck and work.qos == 1:
+            if await ctx.sendWork(work): delWork.add msgId
+
+          elif work.typ == PubComp and work.qos == 2:
+            if await ctx.sendWork(work): delWork.add msgId
+
+          else:
+            if await ctx.sendWork(work): work.state = WorkSent
+
+        #when not defined(broker):
+        elif work.wk == SubWork and work.state == WorkNew:
+          if work.typ == Subscribe:
+            if await ctx.sendWork(work): work.state = WorkSent
+
+          elif work.typ == Unsubscribe:
+            if await ctx.sendWork(work):
+              work.state = WorkSent
+              ctx.pubCallbacks.del work.topic
+
+      for msgId in delWork:
+        ctx.workQueue.del msgId
+  finally:
+    ctx.inWork = false
+    if ctx.isPending:
+      ctx.isPending = false
+      asyncCheck ctx.work()
 
 when defined(broker):
   proc sendWill(ctx: MqttCtx) {.async.} =
