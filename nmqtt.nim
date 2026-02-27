@@ -98,10 +98,11 @@ type
     PasswordFlag = 0x40
     UserNameFlag = 0x80
 
-  Pkt = object
+  PktObj = object
     typ: PktType
     flags: uint8
     data: seq[uint8]
+  Pkt = ref PktObj
 
   WorkKind = enum
     PubWork, SubWork
@@ -168,14 +169,14 @@ when defined(broker):
 # Packet helpers
 #
 
-proc put(pkt: var Pkt, v: uint16) =
+proc put(pkt: Pkt, v: uint16) =
   pkt.data.add (v.int /%  256).uint8
   pkt.data.add (v.int mod 256).uint8
 
-proc put(pkt: var Pkt, v: uint8) =
+proc put(pkt: Pkt, v: uint8) =
   pkt.data.add v
 
-proc put(pkt: var Pkt, data: string, withLen: bool) =
+proc put(pkt: Pkt, data: string, withLen: bool) =
   if withLen:
     pkt.put data.len.uint16
   for c in data:
@@ -218,7 +219,8 @@ proc `$`(pkt: Pkt): string =
     result.add b.toHex
     result.add " "
 
-proc newPkt(typ: PktType=NOTYPE, flags: uint8=0): Pkt =
+proc newPkt(typ: PktType = NOTYPE, flags: uint8 = 0): Pkt =
+  new result
   result.typ = typ
   result.flags = flags
 
@@ -377,6 +379,23 @@ proc send(ctx: MqttCtx, pkt: Pkt): Future[bool] {.async.} =
 
   return true
 
+proc recvExact(ctx: MqttCtx, pkt: Pkt, len: int): Future[int] {.async.} =
+  if len == 0:
+    return 0
+  pkt.data.setLen(len)
+  var off = 0
+  let base = cast[ptr UncheckedArray[uint8]](pkt.data[0].addr)
+  while off < len:
+    let r =
+      try:
+        await ctx.s.recvInto(addr base[off], len - off)
+      except CatchableError:
+        raise
+    if r == 0:
+      # clean EOF
+      return 0
+    off += r
+  return len
 
 proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
   ## Receive and parse the packet
@@ -422,7 +441,7 @@ proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
 
   if len > 0:
     pkt.data.setlen len
-    r = await ctx.s.recvInto(pkt.data[0].addr, len)
+    r = await ctx.recvExact(pkt, len)
 
     if r != len:
       when not defined(broker):
