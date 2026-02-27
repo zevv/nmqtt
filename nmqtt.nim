@@ -1069,7 +1069,7 @@ proc runRx(ctx: MqttCtx) {.async.} =
   try:
     while true:
       var pkt = await ctx.recv()
-      if pkt.typ == Notype:
+      if pkt.isNil or pkt.typ == Notype:
         break
       await ctx.handle(pkt)
   except OsError:
