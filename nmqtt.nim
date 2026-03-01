@@ -40,6 +40,7 @@ type
     pubCallbacks: Table[string, PubCallback]
     inWork: bool
     keepAlive: uint16
+    pingWorkerId: int
     willFlag: bool
     willQoS: uint8
     willRetain: bool
@@ -1050,9 +1051,11 @@ proc runRx(ctx: MqttCtx) {.async.} =
     if ctx.verbosity >= 2:
       ctx.wrn "Boom, socket is closed"
 
-proc runPing(ctx: MqttCtx) {.async.} =
+proc runPing(ctx: MqttCtx, workerId: int) {.async.} =
   while true:
     await sleepAsync ctx.keepAlive.int * 1000
+    if workerId != ctx.pingWorkerId:
+      break
     let ok = await ctx.sendPingReq()
     if not ok:
       break
@@ -1079,8 +1082,9 @@ proc connectBroker(ctx: MqttCtx) {.async.} =
 
   let ok = await ctx.sendConnect()
   if ok:
+    ctx.pingWorkerId.inc
     asyncCheck ctx.runRx()
-    asyncCheck ctx.runPing()
+    asyncCheck ctx.runPing(ctx.pingWorkerId)
 
 
 proc runConnect(ctx: MqttCtx) {.async.} =
