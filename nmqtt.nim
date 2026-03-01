@@ -355,8 +355,8 @@ proc send(ctx: MqttCtx, pkt: Pkt): Future[bool] {.async.} =
   if ctx.state notin {Connecting, Connected, Disconnecting}:
     return false
 
-  var hdr: seq[uint8]
-  hdr.add (pkt.typ.int shl 4).uint8 or pkt.flags
+  var buf: seq[uint8] = newSeqOfCap[uint8](1 + 4 + pkt.data.len)
+  buf.add (pkt.typ.int shl 4).uint8 or pkt.flags
 
   var len = pkt.data.len
   while true:
@@ -364,15 +364,16 @@ proc send(ctx: MqttCtx, pkt: Pkt): Future[bool] {.async.} =
     len = len div 128
     if len > 0:
       b = b or 128
-    hdr.add b.uint8
+    buf.add b.uint8
     if len == 0:
       break
 
   ctx.dmp "tx> " & $pkt
-  await ctx.s.send(hdr[0].unsafeAddr, hdr.len)
-
   if pkt.data.len > 0:
-    await ctx.s.send(pkt.data[0].unsafeAddr, pkt.data.len)
+    let hdrlen = buf.len
+    buf.setLen(hdrlen + pkt.data.len)
+    copyMem(buf[hdrlen].addr, pkt.data[0].unsafeAddr, pkt.data.len)
+  await ctx.s.send(buf[0].unsafeAddr, buf.len)
 
   return true
 
