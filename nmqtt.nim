@@ -39,6 +39,7 @@ type
     workQueue: OrderedTable[MsgId, Work]
     pubCallbacks: Table[string, PubCallback]
     inWork: bool
+    hasNewWorks: bool
     keepAlive: uint16
     willFlag: bool
     willQoS: uint8
@@ -587,31 +588,32 @@ proc sendWork(ctx: MqttCtx, work: Work): Future[bool] =
     ctx.wrn("Error sending unknown package: " & $work.typ)
 
 proc work(ctx: MqttCtx) {.async.} =
+  ctx.hasNewWorks = true
   if ctx.inWork:
     return
   ctx.inWork = true
-  if ctx.state == Connected:
-    var delWork: seq[MsgId]
-    let workQueue = ctx.workQueue # TODO: We need to copy the workQueue, otherwise
-                                  # we can hit: `the length of the table changed
-                                  # while iterating over it`
+
+  while ctx.state == Connected and ctx.hasNewWorks:
+    ctx.hasNewWorks = false
+    let workQueue = ctx.workQueue
+
     for msgId, work in workQueue:
 
       #when defined(broker):
       if work.typ in [ConnAck, SubAck, UnsubAck, PingResp]:
         if await ctx.sendWork(work):
-          delWork.add msgId
+          ctx.workQueue.del msgId
           continue
 
       if work.wk == PubWork and work.state == WorkNew:
         if work.typ == Publish and work.qos == 0:
-          if await ctx.sendWork(work): delWork.add msgId
+          if await ctx.sendWork(work): ctx.workQueue.del msgId
 
         elif work.typ == PubAck and work.qos == 1:
-          if await ctx.sendWork(work): delWork.add msgId
+          if await ctx.sendWork(work): ctx.workQueue.del msgId
 
         elif work.typ == PubComp and work.qos == 2:
-          if await ctx.sendWork(work): delWork.add msgId
+          if await ctx.sendWork(work): ctx.workQueue.del msgId
 
         else:
           if await ctx.sendWork(work): work.state = WorkSent
@@ -626,8 +628,6 @@ proc work(ctx: MqttCtx) {.async.} =
             work.state = WorkSent
             ctx.pubCallbacks.del work.topic
 
-    for msgId in delWork:
-      ctx.workQueue.del msgId
   ctx.inWork = false
 
 when defined(broker):
