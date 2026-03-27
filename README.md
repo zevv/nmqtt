@@ -12,6 +12,7 @@ binaries for a MQTT broker, publisher and subscriber.
 * [Library](#Library)
   * [Examples](#Examples)
   * [Procs](#Procs)
+* [Ecosystem & GUI](#ecosystem--gui)
 
 
 # Install
@@ -414,3 +415,9 @@ exiting your program.
 
 
 ____
+
+# Ecosystem & GUI
+
+If you are looking for a graphical interface to interact with this library, check out:
+
+* [nmqttgui](https://github.com/ThomasTJdev/nmqttgui) — A GUI for `nmqtt_pub` that allows for easier interaction and connection management.
