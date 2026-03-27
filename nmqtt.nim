@@ -423,9 +423,18 @@ proc recv(ctx: MqttCtx): Future[Pkt] {.async.} =
 
   if len > 0:
     pkt.data.setlen len
-    r = await ctx.s.recvInto(pkt.data[0].addr, len)
 
-    if r != len:
+    var offset = 0
+    while offset < len:
+      try:
+        r = await ctx.s.recvInto(addr pkt.data[offset], len - offset)
+      except:
+        break
+      if r == 0:
+        break
+      offset += r
+
+    if offset != len:
       when not defined(broker):
         await ctx.close("remote closed connection")
       return
