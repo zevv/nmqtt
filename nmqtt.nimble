@@ -1,6 +1,6 @@
 # Package
-version       = "1.0.7"
-author        = "zevv & ThomasTJdev"
+version       = "1.0.8"
+author        = "zevv & ThomasTJdev & python36"
 description   = "Native MQTT library and binaries for publishing, subscribing and broker"
 license       = "MIT"
 bin           = @["nmqtt/nmqtt", "nmqtt/nmqtt_password", "nmqtt/nmqtt_pub", "nmqtt/nmqtt_sub"]
